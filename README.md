@@ -366,12 +366,6 @@ All tables include appropriate indexes for performance optimization and implemen
 
 ---
 
-## Documentation
-
-| Document | Purpose |
-|----------|---------|
-| [SETUP_IN_30_MINUTES.md](./SETUP_IN_30_MINUTES.md) | Quick setup guide |
-| [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) | Feature checklist |
 
 ---
 
