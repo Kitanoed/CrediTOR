@@ -1,25 +1,61 @@
 import React, { useState } from 'react';
-import { Edit2, Save, X } from 'lucide-react';
-import { getStatusColor } from '../services/mockData';
+import { Edit2, Save, X, QrCode, Printer } from 'lucide-react';
+import { getStatusColor } from '../services/utils';
+import { files } from '../api/client';
+import { TorQrModal } from './TorQrModal';
+import { TorPrintModal } from './TorPrintModal';
 
 export const RegisteredDocuments = ({ records, onStatusChange }) => {
   const [editingId, setEditingId] = useState(null);
   const [editingStatus, setEditingStatus] = useState('');
+  const [qrRecord, setQrRecord] = useState(null);
+  const [printRecord, setPrintRecord] = useState(null);
+  const [printPdfUrl, setPrintPdfUrl] = useState(null);
+  const [printingDcn, setPrintingDcn] = useState(null);
 
   const handleEditStatus = (id, currentStatus) => {
     setEditingId(id);
     setEditingStatus(currentStatus);
   };
 
-  const handleSaveStatus = (id) => {
-    onStatusChange(id, editingStatus);
-    setEditingId(null);
-    setEditingStatus('');
+  const handleSaveStatus = async (id) => {
+    try {
+      await onStatusChange(id, editingStatus);
+      setEditingId(null);
+      setEditingStatus('');
+    } catch (err) {
+      alert(err.message || 'Failed to update status');
+    }
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditingStatus('');
+  };
+
+  const handleClosePrint = () => {
+    if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
+    setPrintPdfUrl(null);
+    setPrintRecord(null);
+  };
+
+  const handlePrint = async (record) => {
+    if (!record.uploadedFileName) {
+      alert('No PDF file is attached to this TOR.');
+      return;
+    }
+
+    setPrintingDcn(record.dcn);
+    try {
+      const blob = await files.download(record.dcn);
+      const url = URL.createObjectURL(blob);
+      setPrintPdfUrl(url);
+      setPrintRecord(record);
+    } catch (err) {
+      alert(err.message || 'Could not load the TOR PDF for printing.');
+    } finally {
+      setPrintingDcn(null);
+    }
   };
 
   return (
@@ -115,13 +151,38 @@ export const RegisteredDocuments = ({ records, onStatusChange }) => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       {editingId !== record.id && (
-                        <button
-                          onClick={() => handleEditStatus(record.id, record.status)}
-                          className="inline-flex items-center gap-1 px-3 py-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                          <span className="text-xs font-semibold">Edit</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePrint(record)}
+                            disabled={!record.uploadedFileName || printingDcn === record.dcn}
+                            className="inline-flex items-center gap-1 px-3 py-1 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded transition disabled:opacity-40"
+                            title="Print stamped TOR PDF"
+                          >
+                            <Printer className="w-4 h-4" />
+                            <span className="text-xs font-semibold">
+                              {printingDcn === record.dcn ? '…' : 'Print'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQrRecord(record)}
+                            disabled={!record.verificationToken}
+                            className="inline-flex items-center gap-1 px-3 py-1 text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition disabled:opacity-40"
+                            title="View verification QR code"
+                          >
+                            <QrCode className="w-4 h-4" />
+                            <span className="text-xs font-semibold">QR</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditStatus(record.id, record.status)}
+                            className="inline-flex items-center gap-1 px-3 py-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            <span className="text-xs font-semibold">Edit</span>
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -139,6 +200,11 @@ export const RegisteredDocuments = ({ records, onStatusChange }) => {
           </div>
         )}
       </div>
+
+      {qrRecord && <TorQrModal record={qrRecord} onClose={() => setQrRecord(null)} />}
+      {printRecord && printPdfUrl && (
+        <TorPrintModal record={printRecord} pdfUrl={printPdfUrl} onClose={handleClosePrint} />
+      )}
     </div>
   );
 };

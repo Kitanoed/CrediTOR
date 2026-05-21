@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Search,
   AlertTriangle,
@@ -13,27 +13,44 @@ import {
   FileText,
   GraduationCap,
 } from 'lucide-react';
-import { maskName } from '../services/mockData';
+import { verification } from '../api/client';
+import { verifyOnce, clearVerifyCache } from '../services/verifyCache';
+import { PhotoVerificationForm } from './PhotoVerificationForm';
+import {
+  savePendingVerifyPhoto,
+  loadPendingVerifyPhoto,
+  clearPendingVerifyPhoto,
+} from '../services/photoPersist';
+import { VerificationResultView } from './VerificationResultView';
 
-const PortalHeader = ({ compact = false }) => (
+const PortalHeader = ({
+  compact = false,
+  isRegistrarLoggedIn = false,
+  onRegistrarLogin,
+  onGoToRegistrarPortal,
+}) => (
   <header className="relative z-20 bg-slate-900 border-b border-slate-800">
     <div
-      className={`max-w-6xl mx-auto px-6 flex items-center justify-between ${
+      className={`max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-4 ${
         compact ? 'py-4' : 'py-5'
       }`}
     >
-      <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 shadow-lg shadow-blue-900/40">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 shadow-lg shadow-blue-900/40 shrink-0">
           <Shield className="w-5 h-5 text-white" strokeWidth={2.25} />
         </div>
-        <div>
+        <div className="min-w-0">
           <h1 className="text-lg font-bold text-white tracking-tight">CrediTOR</h1>
-          <p className="text-[11px] text-slate-400">Document Verification Portal</p>
+          <p className="text-[11px] text-slate-400 truncate">Transcript Verification Portal</p>
         </div>
       </div>
-      <p className="hidden sm:block text-xs text-slate-400 font-medium">
-        Secure Verification System
-      </p>
+      <button
+        type="button"
+        onClick={isRegistrarLoggedIn ? onGoToRegistrarPortal : onRegistrarLogin}
+        className="shrink-0 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg shadow-blue-900/30"
+      >
+        {isRegistrarLoggedIn ? 'Registrar Portal' : 'Registrar Login'}
+      </button>
     </div>
   </header>
 );
@@ -120,7 +137,6 @@ const ProgressRow = ({ label, percent, color }) => (
 
 const HeroDecorations = () => (
   <div className="absolute inset-0 pointer-events-none overflow-hidden hidden md:block max-w-[1600px] mx-auto left-0 right-0">
-    {/* Top left — sticky note + QR scan */}
     <div className="absolute top-[6%] left-[2%] xl:left-[4%] w-44 xl:w-52 -rotate-6 rounded-xl bg-amber-50 border border-amber-200/90 shadow-[0_12px_32px_rgba(180,130,0,0.12)] p-4 xl:p-5">
       <span className="absolute -top-2 left-4 text-lg" aria-hidden>
         📌
@@ -140,15 +156,14 @@ const HeroDecorations = () => (
           <ScanLine className="w-6 h-6 text-blue-600" />
         </div>
         <div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">QR Scan</p>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Photo Scan</p>
           <p className="text-sm text-slate-700 mt-1.5 font-medium leading-snug">
-            Point your camera at the TOR QR code
+            Snap TOR details — name, ID &amp; date matched
           </p>
         </div>
       </div>
     </FloatingCard>
 
-    {/* Top right — instant verify + reminder */}
     <FloatingCard className="top-[5%] right-[2%] xl:right-[4%] w-64 xl:w-72 rotate-2">
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-bold text-slate-800">Instant verify</p>
@@ -160,7 +175,7 @@ const HeroDecorations = () => (
         </div>
         <div className="min-w-0">
           <p className="text-xs font-semibold text-slate-800 truncate">TOR lookup</p>
-          <p className="text-[11px] text-slate-500">Opens this portal automatically</p>
+          <p className="text-[11px] text-slate-500">QR + photo identity scan</p>
         </div>
         <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md shrink-0">
           Live
@@ -179,18 +194,17 @@ const HeroDecorations = () => (
           <span className="w-5 h-5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold flex items-center justify-center">
             1
           </span>
-          Scan or enter DCN
+          Scan QR or enter DCN
         </li>
         <li className="flex items-center gap-2">
           <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">
             2
           </span>
-          Match registrar record
+          Photograph TOR details (QR only)
         </li>
       </ul>
     </FloatingCard>
 
-    {/* Mid sides — icon bubbles */}
     <FloatingIconBubble className="top-[44%] left-[8%] xl:left-[10%]">
       <FileCheck className="w-5 h-5 xl:w-6 xl:h-6 text-blue-600" />
     </FloatingIconBubble>
@@ -204,7 +218,6 @@ const HeroDecorations = () => (
       <Lock className="w-5 h-5 text-slate-600" />
     </FloatingIconBubble>
 
-    {/* Bottom left — document status with task bars */}
     <FloatingCard className="bottom-[14%] left-[2%] xl:left-[3%] w-64 xl:w-80 -rotate-2">
       <p className="text-sm font-bold text-slate-800 mb-4">Document status</p>
       <div className="space-y-3">
@@ -218,14 +231,13 @@ const HeroDecorations = () => (
       </p>
     </FloatingCard>
 
-    {/* Bottom right — secure checks */}
     <FloatingCard className="bottom-[12%] right-[2%] xl:right-[3%] w-64 xl:w-80 rotate-1">
       <div className="flex items-center gap-2.5 mb-4">
         <Lock className="w-5 h-5 text-slate-700 shrink-0" />
         <p className="text-sm font-bold text-slate-800">Secure checks</p>
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
-        {['DCN', 'Token', 'Hash'].map((label) => (
+        {['DCN', 'Token', 'Photo'].map((label) => (
           <span
             key={label}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-900 text-slate-200"
@@ -256,7 +268,6 @@ const HeroDecorations = () => (
       </div>
     </FloatingCard>
 
-    {/* Bottom edge accents */}
     <FloatingIconBubble className="bottom-[28%] left-[22%] xl:left-[24%] rotate-3" size="lg">
       <QrCode className="w-7 h-7 text-blue-500" />
     </FloatingIconBubble>
@@ -266,82 +277,226 @@ const HeroDecorations = () => (
   </div>
 );
 
-export const PublicVerificationPortal = ({ torRecords, onVerification, verificationToken }) => {
+const mapVerificationResponse = (data) => {
+  if (data.found && data.identityMatch === false) {
+    return {
+      found: true,
+      verified: false,
+      identityMatch: false,
+      error: data.error,
+      overallStatus: data.overallStatus || 'Identity Mismatch',
+      statusMessage: data.statusMessage,
+      matchSummary: data.matchSummary,
+    };
+  }
+  if (data.found && data.record && data.identityMatch) {
+    return {
+      found: true,
+      verified: data.verified,
+      record: data.record,
+      maskedName: data.maskedName,
+      maskedStudentId: data.maskedStudentId,
+      issuingOffice: data.issuingOffice,
+      overallStatus: data.overallStatus,
+      statusMessage: data.statusMessage,
+      identityMatch: true,
+      manualVerification: data.manualVerification,
+      matchSummary: data.matchSummary,
+    };
+  }
+  return {
+    found: false,
+    verified: false,
+    identityMatch: false,
+    error: data.error || 'Verification failed',
+  };
+};
+
+const buildVerifyCacheKey = (kind, id, fileName) => `${kind}:${id}:photo:${fileName || 'unknown'}`;
+
+export const PublicVerificationPortal = ({
+  verificationToken,
+  onClearToken,
+  onRegistrarLogin,
+  onGoToRegistrarPortal,
+  isRegistrarLoggedIn = false,
+  backendChecking = false,
+  backendReady = true,
+}) => {
   const [dcnInput, setDcnInput] = useState('');
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState(null);
+  const [scanPhase, setScanPhase] = useState('');
   const [verificationResult, setVerificationResult] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [lastCacheKey, setLastCacheKey] = useState(null);
+
+  const handlePhotoChange = (file, previewUrl) => {
+    setPhotoFile(file);
+    setPhotoPreviewUrl(previewUrl);
+    if (file && verificationToken) {
+      savePendingVerifyPhoto(verificationToken, file);
+    } else if (!file) {
+      clearPendingVerifyPhoto();
+    }
+  };
 
   useEffect(() => {
-    if (verificationToken) {
-      const record = torRecords.find((r) => r.verificationToken === verificationToken);
-      if (record) {
-        setVerificationResult({
-          found: true,
-          record,
-          maskedName: maskName(record.fullName),
-        });
-      } else {
-        setVerificationResult({
-          found: false,
-          error: 'Invalid verification token',
-        });
-      }
-    }
-  }, [verificationToken, torRecords]);
+    if (!verificationToken) return;
 
-  const handleSearch = () => {
-    if (!dcnInput.trim()) {
+    let cancelled = false;
+    loadPendingVerifyPhoto(verificationToken).then((restored) => {
+      if (cancelled || !restored) return;
+      setPhotoFile(restored.file);
+      setPhotoPreviewUrl(restored.previewUrl);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [verificationToken]);
+
+  const handleDcnLookup = async () => {
+    const dcn = dcnInput.trim().toUpperCase();
+    if (!dcn) {
       alert('Please enter a Document Control Number (DCN)');
       return;
     }
 
     setIsSearching(true);
+    const cacheKey = `dcn:${dcn}:lookup`;
+    setLastCacheKey(cacheKey);
 
-    setTimeout(() => {
-      const record = torRecords.find((r) => r.dcn.toUpperCase() === dcnInput.toUpperCase());
-
-      if (record) {
-        setVerificationResult({
-          found: true,
-          record,
-          maskedName: maskName(record.fullName),
-        });
-      } else {
-        setVerificationResult({
-          found: false,
-          error: `No document found with DCN: ${dcnInput}`,
-        });
-      }
-
+    try {
+      const data = await verifyOnce(cacheKey, () => verification.byDCN(dcn));
+      setVerificationResult(mapVerificationResponse(data));
+    } catch (err) {
+      setVerificationResult({ found: false, error: err.message, identityMatch: false });
+    } finally {
       setIsSearching(false);
-    }, 500);
+    }
+  };
+
+  const runPhotoVerification = async () => {
+    if (!backendReady) {
+      alert('Still connecting to the server. Wait a moment and try again.');
+      return;
+    }
+
+    if (!photoFile) {
+      alert('Please take a photo of the TOR showing name, student ID, and date issued.');
+      return;
+    }
+
+    setIsSearching(true);
+    setScanPhase('Reading photo with OCR…');
+
+    try {
+      const cacheKey = buildVerifyCacheKey('token', verificationToken, photoFile.name);
+      setLastCacheKey(cacheKey);
+
+      const data = await verifyOnce(cacheKey, () =>
+        verification.byTokenWithPhoto(verificationToken, photoFile)
+      );
+      setVerificationResult(mapVerificationResponse(data));
+      clearPendingVerifyPhoto();
+    } catch (err) {
+      setVerificationResult({ found: false, error: err.message, identityMatch: false });
+    } finally {
+      setIsSearching(false);
+      setScanPhase('');
+    }
   };
 
   const handleBackToSearch = () => {
     setVerificationResult(null);
     setDcnInput('');
+    if (photoPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(photoPreviewUrl);
+    setPhotoFile(null);
+    setPhotoPreviewUrl(null);
+    if (lastCacheKey) {
+      clearVerifyCache(lastCacheKey);
+      setLastCacheKey(null);
+    }
+    clearPendingVerifyPhoto();
+    if (verificationToken) {
+      onClearToken?.();
+    }
   };
 
   if (verificationResult) {
-    return <VerificationResult result={verificationResult} onBack={handleBackToSearch} />;
+    return (
+      <VerificationResultView
+        result={verificationResult}
+        onBack={handleBackToSearch}
+        onSwitchToRegistrar={
+          isRegistrarLoggedIn ? onGoToRegistrarPortal : onRegistrarLogin
+        }
+        isRegistrarLoggedIn={isRegistrarLoggedIn}
+        compact={Boolean(verificationToken)}
+      />
+    );
+  }
+
+  const isQrFlow = Boolean(verificationToken);
+
+  if (isQrFlow) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+        <PortalHeader
+          compact
+          isRegistrarLoggedIn={isRegistrarLoggedIn}
+          onRegistrarLogin={onRegistrarLogin}
+          onGoToRegistrarPortal={onGoToRegistrarPortal}
+        />
+        <main className="flex-1 px-4 py-8 max-w-lg mx-auto w-full">
+          {backendChecking && (
+            <p className="mb-4 text-center text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              Connecting to server… you can still take a photo while waiting.
+            </p>
+          )}
+          <h2 className="text-2xl font-bold text-slate-900 text-center">Verify this TOR</h2>
+          <p className="mt-2 text-sm text-slate-600 text-center">
+            Photograph the name, student ID, and date issued on the paper document, then tap{' '}
+            <strong>Scan &amp; verify</strong>.
+          </p>
+          <div className="mt-6">
+            <PhotoVerificationForm
+              dcn={dcnInput}
+              onDcnChange={setDcnInput}
+              photoFile={photoFile}
+              photoPreviewUrl={photoPreviewUrl}
+              onPhotoChange={handlePhotoChange}
+              onSubmit={runPhotoVerification}
+              isSubmitting={isSearching}
+              scanPhase={scanPhase}
+              showDcn={false}
+              showQrHint
+            />
+          </div>
+        </main>
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col bg-dot-grid">
-      <PortalHeader />
+      <PortalHeader
+        isRegistrarLoggedIn={isRegistrarLoggedIn}
+        onRegistrarLogin={onRegistrarLogin}
+        onGoToRegistrarPortal={onGoToRegistrarPortal}
+      />
 
       <main className="relative w-full min-h-[calc(100vh-4.5rem)] sm:min-h-[calc(100vh-5rem)]">
         <HeroDecorations />
 
         <section className="relative z-10 flex flex-col items-center justify-center px-4 py-14 sm:py-20 min-h-[calc(100vh-4.5rem)] sm:min-h-[calc(100vh-5rem)] max-w-3xl mx-auto">
-          {/* Hero icon */}
           <div className="mb-6 flex items-center justify-center w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white shadow-[0_16px_48px_rgba(15,23,42,0.1)] border border-slate-200">
             <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-slate-900 to-slate-800">
               <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-blue-400" strokeWidth={2} />
             </div>
           </div>
 
-          {/* Headline */}
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-slate-900 text-center tracking-tight">
             Verify your document
           </h2>
@@ -349,11 +504,10 @@ export const PublicVerificationPortal = ({ torRecords, onVerification, verificat
             all in one place
           </p>
           <p className="mt-4 max-w-md text-center text-sm sm:text-base text-slate-600">
-            Scan the QR code on your Transcript of Records, or enter your Document Control Number
-            below.
+            Enter the Document Control Number (DCN) from the TOR. We show registrar-backed details —
+            you manually compare them with the physical document.
           </p>
 
-          {/* Centered DCN search */}
           <div className="mt-8 w-full max-w-lg">
             <label htmlFor="dcn-input" className="sr-only">
               Document Control Number
@@ -364,13 +518,13 @@ export const PublicVerificationPortal = ({ torRecords, onVerification, verificat
                 type="text"
                 value={dcnInput}
                 onChange={(e) => setDcnInput(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                onKeyDown={(e) => e.key === 'Enter' && handleDcnLookup()}
                 placeholder="e.g., DCN-12345"
                 className="flex-1 min-w-0 px-5 py-3.5 sm:py-4 text-lg font-mono text-slate-900 placeholder:text-slate-400 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               />
               <button
                 type="button"
-                onClick={handleSearch}
+                onClick={handleDcnLookup}
                 disabled={isSearching}
                 className="px-8 py-3.5 sm:py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-600/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
               >
@@ -391,11 +545,14 @@ export const PublicVerificationPortal = ({ torRecords, onVerification, verificat
               DCN is printed on your official TOR — typically starts with{' '}
               <span className="font-mono font-semibold text-slate-700">DCN-</span>
             </p>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              Scan the QR code on the TOR for automatic photo verification instead.
+            </p>
           </div>
 
           <p className="mt-8 flex items-center gap-2 text-xs text-slate-500">
             <Shield className="w-3.5 h-3.5 text-slate-700" />
-            Secure verification protocols · Registrar-backed records
+            Manual cross-check · Registrar-backed records
           </p>
         </section>
       </main>
@@ -405,177 +562,4 @@ export const PublicVerificationPortal = ({ torRecords, onVerification, verificat
   );
 };
 
-const ResultPageShell = ({ children }) => (
-  <div className="flex flex-col min-h-screen bg-dot-grid">
-    <PortalHeader compact />
-    <main className="flex-1 flex items-center justify-center px-4 py-10">{children}</main>
-    <PortalBottomSection />
-  </div>
-);
-
-const VerificationResult = ({ result, onBack }) => {
-  if (result.error && !result.found) {
-    return (
-      <ResultPageShell>
-        <div className="w-full max-w-2xl">
-          <div className="bg-red-600 text-white rounded-2xl shadow-xl overflow-hidden mb-6 border border-red-700">
-            <div className="px-8 py-6 flex items-center gap-4">
-              <AlertTriangle className="w-12 h-12 shrink-0" />
-              <div>
-                <h2 className="text-2xl font-bold">Invalid Document</h2>
-                <p className="text-red-100 mt-1">{result.error}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-8 border border-slate-200">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">What to do next:</h3>
-            <ul className="space-y-3 text-slate-700 text-sm">
-              <li className="flex gap-3">
-                <span className="text-red-500 font-bold">•</span>
-                <span>Double-check the Document Control Number (DCN) you entered</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-red-500 font-bold">•</span>
-                <span>Ensure the QR code on your document is not damaged or altered</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-red-500 font-bold">•</span>
-                <span>Contact the Registrar&apos;s Office if the document appears invalid</span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="mt-8 text-center">
-            <button
-              type="button"
-              onClick={onBack}
-              className="px-8 py-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 font-semibold transition shadow-lg"
-            >
-              Try Another Search
-            </button>
-          </div>
-        </div>
-      </ResultPageShell>
-    );
-  }
-
-  const record = result.record;
-  const maskedName = result.maskedName;
-
-  const statusStyles =
-    record.status === 'Active'
-      ? 'bg-green-600 border-green-700'
-      : record.status === 'Revoked'
-        ? 'bg-red-600 border-red-700'
-        : record.status === 'Expired'
-          ? 'bg-slate-600 border-slate-700'
-          : 'bg-slate-600 border-slate-700';
-
-  return (
-    <ResultPageShell>
-      <div className="w-full max-w-2xl">
-        <div className={`rounded-2xl shadow-xl overflow-hidden mb-6 text-white border ${statusStyles}`}>
-          <div className="px-8 py-8 text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-2">
-              {record.status === 'Active' && '✓ VERIFIED'}
-              {record.status === 'Revoked' && '✗ REVOKED'}
-              {record.status === 'Expired' && '⚠ EXPIRED'}
-            </h2>
-            <p className="text-sm opacity-90">Document Status: {record.status}</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-6 border border-slate-200">
-          <h3 className="text-lg font-bold text-slate-900 mb-6 pb-4 border-b border-slate-200">
-            Document Verification Details
-          </h3>
-
-          <div className="space-y-4 mb-8">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-4 bg-blue-50 rounded-xl border border-blue-200">
-              <span className="font-semibold text-slate-700 text-sm">Document Control Number (DCN)</span>
-              <span className="text-xl font-mono font-bold text-blue-600">{record.dcn}</span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="font-semibold text-slate-700 text-sm">Date Issued</span>
-              <span className="text-lg font-semibold text-slate-900">
-                {new Date(record.dateIssued).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              </span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="font-semibold text-slate-700 text-sm">Graduate Name (Masked)</span>
-              <span className="text-lg font-mono text-slate-900">{maskedName}</span>
-            </div>
-          </div>
-
-          <div className="p-6 bg-yellow-50 rounded-xl border-2 border-yellow-400 mb-6">
-            <div className="flex gap-4">
-              <AlertTriangle className="w-6 h-6 text-yellow-600 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-bold text-yellow-900 mb-2">Verification Policy</h4>
-                <p className="text-sm text-yellow-800">
-                  <strong>CRITICAL:</strong> If the masked name or details above do not align perfectly with
-                  the physical paper document in your hands, this QR code may have been copied from a
-                  different student&apos;s record. <strong>Do not accept this document.</strong> Contact the
-                  Registrar immediately.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {record.status === 'Revoked' && (
-            <div className="p-4 bg-red-50 rounded-xl border border-red-200 mb-6">
-              <p className="text-sm text-red-800">
-                <strong>This document has been revoked</strong> and is no longer valid for official purposes.
-              </p>
-            </div>
-          )}
-
-          {record.status === 'Expired' && (
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 mb-6">
-              <p className="text-sm text-gray-800">
-                <strong>This document has expired</strong> and may need to be renewed. Contact the
-                Registrar&apos;s Office for more information.
-              </p>
-            </div>
-          )}
-
-          {record.status === 'Active' && (
-            <div className="p-4 bg-green-50 rounded-xl border border-green-200 mb-6">
-              <p className="text-sm text-green-800">
-                <strong>This document is valid and active.</strong> The information above matches our records.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-8">
-          <h4 className="font-semibold text-slate-900 mb-3">About This Verification</h4>
-          <ul className="text-sm text-slate-700 space-y-2">
-            <li>All details have been cross-referenced with our system</li>
-            <li>This verification is valid for official document recognition</li>
-            <li>This portal does not store or log your personal information</li>
-          </ul>
-        </div>
-
-        <div className="text-center">
-          <button
-            type="button"
-            onClick={onBack}
-            className="px-8 py-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 font-semibold transition shadow-lg"
-          >
-            Verify Another Document
-          </button>
-        </div>
-      </div>
-    </ResultPageShell>
-  );
-};
-
-export { VerificationResult };
+export { VerificationResultView as VerificationResult };
