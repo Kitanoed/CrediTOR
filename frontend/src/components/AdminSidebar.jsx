@@ -1,7 +1,7 @@
 import React from 'react';
 import { FileText, BookOpen, Clock, LogOut, Shield } from 'lucide-react';
 
-export const AdminSidebar = ({ activeModule, onModuleChange, onSwitchToPublic }) => {
+export const AdminSidebar = ({ activeModule, onModuleChange, onSwitchToPublic, user, onLogout }) => {
   return (
     <div className="w-64 h-screen bg-gradient-to-b from-slate-800 to-slate-900 text-white flex flex-col border-r border-slate-700 shadow-lg">
       {/* Logo Section */}
@@ -68,10 +68,18 @@ export const AdminSidebar = ({ activeModule, onModuleChange, onSwitchToPublic })
           <span className="font-medium text-sm">View Public Portal</span>
         </button>
 
-        {/* Registrar Info */}
+        {/* User Info */}
         <div className="px-4 py-3 bg-slate-800 rounded-lg border border-slate-700">
           <p className="text-xs text-slate-400">Logged in as</p>
-          <p className="text-sm font-medium text-slate-200">Registrar Admin</p>
+          <p className="text-sm font-medium text-slate-200 truncate">
+            {user?.fullName || user?.email || 'Registrar'}
+          </p>
+          <button
+            onClick={onLogout}
+            className="mt-2 w-full px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold transition"
+          >
+            Logout
+          </button>
         </div>
       </div>
     </div>

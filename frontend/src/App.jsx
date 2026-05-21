@@ -1,126 +1,297 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AdminSidebar } from './components/AdminSidebar';
 import { IssueNewTOR } from './components/IssueNewTOR';
 import { RegisteredDocuments } from './components/RegisteredDocuments';
 import { AuditTrailLogs } from './components/AuditTrailLogs';
 import { PublicVerificationPortal } from './components/PublicVerificationPortal';
-import { initialTORRecords, initialAuditLogs } from './services/mockData';
+import { auth, setAuthToken, getAuthToken, health, tor, auditLogs } from './api/client';
+import LoginPage from './components/LoginPage';
+
+function BackendUnavailable({ error, onRetry }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
+      <div className="max-w-md w-full text-center bg-white rounded-2xl shadow-lg p-8 border border-slate-200">
+        <h1 className="text-xl font-bold text-slate-900 mb-2">Backend unavailable</h1>
+        <p className="text-slate-600 text-sm mb-4">
+          The frontend could not reach the Spring Boot API at{' '}
+          <code className="text-slate-800">/api</code> (proxied to Spring Boot on port 8081).
+        </p>
+        {error && (
+          <p className="text-red-600 text-xs mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+        <code className="text-xs bg-slate-100 px-3 py-2 rounded block text-left text-slate-700 mb-4">
+          cd backend/creditor/creditor
+          <br />
+          .\mvnw.cmd spring-boot:run
+        </code>
+        <p className="text-xs text-slate-500 mb-4">
+          Supabase settings go in <code>application.properties</code> or a <code>.env</code> file in
+          that folder. If port 8080 is already in use, stop the other process and restart.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm"
+        >
+          Retry connection
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const ADMIN_MODULES = new Set(['issueNewTOR', 'registeredDocuments', 'auditTrail']);
+const ADMIN_MODULE_KEY = 'creditor.adminModule';
+
+const readStoredAdminModule = () => {
+  try {
+    const stored = sessionStorage.getItem(ADMIN_MODULE_KEY);
+    return ADMIN_MODULES.has(stored) ? stored : 'issueNewTOR';
+  } catch {
+    return 'issueNewTOR';
+  }
+};
 
 function App() {
-  // State Management
-  const [portal, setPortal] = useState('admin'); // 'admin' or 'public'
-  const [activeModule, setActiveModule] = useState('issueNewTOR');
-  const [torRecords, setTorRecords] = useState(initialTORRecords);
-  const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
+  const [backendReady, setBackendReady] = useState(false);
+  const [backendError, setBackendError] = useState(null);
+  const hasQrTokenOnLoad = () => {
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get('token'));
+  };
+
+  const [checkingBackend, setCheckingBackend] = useState(
+    () => !hasQrTokenOnLoad() && !sessionStorage.getItem('creditor.backendOk')
+  );
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [portal, setPortal] = useState('public');
+  const [activeModule, setActiveModuleState] = useState(readStoredAdminModule);
+
+  const setActiveModule = useCallback((module) => {
+    if (!ADMIN_MODULES.has(module)) return;
+    setActiveModuleState(module);
+    sessionStorage.setItem(ADMIN_MODULE_KEY, module);
+  }, []);
+  const [torRecords, setTorRecords] = useState([]);
+  const [auditLogsList, setAuditLogsList] = useState([]);
   const [verificationToken, setVerificationToken] = useState(null);
 
-  // Check for verification token in URL on mount
+  const loadAuditLogs = useCallback(async () => {
+    const auditRes = await auditLogs.list(1, 100);
+    setAuditLogsList(auditRes.logs || []);
+  }, []);
+
+  const loadAdminData = useCallback(async () => {
+    const [torRes, auditRes] = await Promise.all([tor.list(1, 100), auditLogs.list(1, 100)]);
+    setTorRecords(torRes.records || []);
+    setAuditLogsList(auditRes.logs || []);
+  }, []);
+
+  /** Refresh audit logs while the Audit Trail screen is open (verifications, etc.). */
+  useEffect(() => {
+    if (!isLoggedIn || activeModule !== 'auditTrail') {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const refresh = async () => {
+      if (cancelled) return;
+      try {
+        await loadAuditLogs();
+      } catch (err) {
+        console.error('Audit log refresh failed:', err);
+      }
+    };
+
+    refresh();
+    const intervalId = window.setInterval(refresh, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isLoggedIn, activeModule, loadAuditLogs]);
+
+  const checkBackend = useCallback(async () => {
+    setCheckingBackend(true);
+    setBackendError(null);
+    try {
+      await health();
+      setBackendReady(true);
+      sessionStorage.setItem('creditor.backendOk', '1');
+
+      if (getAuthToken()) {
+        try {
+          const userData = await auth.getMe();
+          setCurrentUser(userData.user);
+          setIsLoggedIn(true);
+          await loadAdminData();
+        } catch {
+          setAuthToken(null);
+          setCurrentUser(null);
+          setIsLoggedIn(false);
+          setTorRecords([]);
+          setAuditLogsList([]);
+        }
+      }
+    } catch (err) {
+      setBackendReady(false);
+      setBackendError(err.message || 'Connection failed');
+    } finally {
+      setCheckingBackend(false);
+    }
+  }, [loadAdminData]);
+
+  const goToPublicPortal = useCallback(() => {
+    setVerificationToken(null);
+    setPortal('public');
+    window.history.replaceState({}, '', '/');
+  }, []);
+
+  const goToRegistrarLogin = useCallback(() => {
+    setPortal('admin');
+    window.history.replaceState({}, '', '/login');
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
+    const path = window.location.pathname;
+    const onVerifyRoute = path === '/verify' || path.endsWith('/verify');
+    const onLoginRoute = path === '/login' || path.endsWith('/login');
+
     if (token) {
       setVerificationToken(token);
+      setPortal('public');
+    } else if (onVerifyRoute) {
+      setPortal('public');
+    } else if (onLoginRoute) {
+      setPortal('admin');
+    } else {
       setPortal('public');
     }
   }, []);
 
-  // Handle new TOR record creation
-  const handleRecordCreated = (newRecord) => {
-    // Add the new record to the list
-    setTorRecords((prev) => [newRecord, ...prev]);
+  useEffect(() => {
+    checkBackend();
+  }, [checkBackend]);
 
-    // Add audit log for record creation
-    const auditLog = {
-      id: `AUDIT-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      eventType: 'Record Creation',
-      dcn: newRecord.dcn,
-      details: `New TOR record created for ${newRecord.fullName} (${newRecord.studentId})`,
-      registrarId: 'REG-001',
-    };
-    setAuditLogs((prev) => [auditLog, ...prev]);
-  };
-
-  // Handle status change
-  const handleStatusChange = (recordId, newStatus) => {
-    const record = torRecords.find((r) => r.id === recordId);
-    if (record) {
-      // Update record status
-      setTorRecords((prev) =>
-        prev.map((r) =>
-          r.id === recordId ? { ...r, status: newStatus } : r
-        )
-      );
-
-      // Add audit log for status change
-      const auditLog = {
-        id: `AUDIT-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        eventType: 'Status Update',
-        dcn: record.dcn,
-        details: `Status of ${record.dcn} changed from ${record.status} to ${newStatus}`,
-        registrarId: 'REG-001',
-      };
-      setAuditLogs((prev) => [auditLog, ...prev]);
+  const handleLogin = async (email, password) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await auth.login(email, password);
+      setAuthToken(result.token);
+      setCurrentUser(result.user);
+      setIsLoggedIn(true);
+      setPortal('admin');
+      window.history.replaceState({}, '', '/login');
+      await loadAdminData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Portal Switch
-  const handleSwitchToPublic = () => {
-    setPortal('public');
+  const handleLogout = async () => {
+    try {
+      await auth.logout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setAuthToken(null);
+      setCurrentUser(null);
+      setIsLoggedIn(false);
+      setTorRecords([]);
+      setAuditLogsList([]);
+      setActiveModuleState('issueNewTOR');
+      sessionStorage.removeItem(ADMIN_MODULE_KEY);
+      setPortal('public');
+      window.history.replaceState({}, '', '/');
+    }
   };
 
-  const handleSwitchToAdmin = () => {
-    setPortal('admin');
+  const handleRecordCreated = async () => {
+    await loadAdminData();
   };
 
-  // Admin Portal Layout
-  if (portal === 'admin') {
+  const handleStatusChange = async (recordId, newStatus) => {
+    await tor.updateStatus(recordId, newStatus);
+    await loadAdminData();
+  };
+
+  const qrTokenActive = hasQrTokenOnLoad() || verificationToken;
+
+  if (checkingBackend && !qrTokenActive) {
     return (
-      <div className="flex h-screen bg-slate-50">
-        {/* Sidebar */}
-        <AdminSidebar
-          activeModule={activeModule}
-          onModuleChange={setActiveModule}
-          onSwitchToPublic={handleSwitchToPublic}
-        />
-
-        {/* Main Content Area */}
-        <div className="flex flex-col flex-1">
-          {/* Content */}
-          {activeModule === 'issueNewTOR' && (
-            <IssueNewTOR onRecordCreated={handleRecordCreated} />
-          )}
-
-          {activeModule === 'registeredDocuments' && (
-            <RegisteredDocuments records={torRecords} onStatusChange={handleStatusChange} />
-          )}
-
-          {activeModule === 'auditTrail' && (
-            <AuditTrailLogs logs={auditLogs} />
-          )}
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-600">
+        Connecting to server…
       </div>
     );
   }
 
-  // Public Portal Layout
-  return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-blue-900 to-slate-900">
-      {/* Back to Admin Button - Subtle */}
-      <button
-        onClick={handleSwitchToAdmin}
-        className="fixed top-4 right-4 px-4 py-2 bg-slate-700 bg-opacity-80 text-white rounded hover:bg-slate-600 text-sm font-semibold z-50 backdrop-blur-sm"
-      >
-        ← Admin Portal
-      </button>
+  if (!backendReady && !qrTokenActive) {
+    return <BackendUnavailable error={backendError} onRetry={checkBackend} />;
+  }
 
-      {/* Public Portal */}
+  if (portal === 'public') {
+    return (
       <PublicVerificationPortal
-        torRecords={torRecords}
-        onVerification={() => {}}
         verificationToken={verificationToken}
+        backendChecking={checkingBackend}
+        backendReady={backendReady}
+        isRegistrarLoggedIn={isLoggedIn}
+        onClearToken={() => {
+          setVerificationToken(null);
+          window.history.replaceState({}, '', '/verify');
+        }}
+        onRegistrarLogin={goToRegistrarLogin}
+        onGoToRegistrarPortal={() => {
+          setPortal('admin');
+          window.history.replaceState({}, '', '/login');
+        }}
       />
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <LoginPage
+        onLogin={handleLogin}
+        isLoading={isLoading}
+        error={error}
+        onBackToPublic={goToPublicPortal}
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-screen bg-slate-50">
+      <AdminSidebar
+        activeModule={activeModule}
+        onModuleChange={setActiveModule}
+        onSwitchToPublic={() => setPortal('public')}
+        user={currentUser}
+        onLogout={handleLogout}
+      />
+
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {activeModule === 'issueNewTOR' && (
+          <IssueNewTOR onRecordCreated={handleRecordCreated} />
+        )}
+        {activeModule === 'registeredDocuments' && (
+          <RegisteredDocuments records={torRecords} onStatusChange={handleStatusChange} />
+        )}
+        {activeModule === 'auditTrail' && <AuditTrailLogs logs={auditLogsList} />}
+      </div>
     </div>
   );
 }
