@@ -40,3 +40,9 @@ coverage/
 # Misc
 .cache/
 .eslintcache
+
+# Backups
+*.tar.gz
+*.zip
+*.backup
+*-backup*
