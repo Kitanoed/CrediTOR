@@ -1,0 +1,5 @@
+# Copy to application-local.properties (gitignored) for local dev.
+# Get a free key: https://ocr.space/ocrapi/freekey
+
+creditor.ocrspace.api-key=your_ocr_space_api_key_here
+
