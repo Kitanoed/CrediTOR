@@ -223,8 +223,8 @@ function App() {
     await loadAdminData();
   };
 
-  const handleStatusChange = async (recordId, newStatus) => {
-    await tor.updateStatus(recordId, newStatus);
+  const handleRevoke = async (recordId) => {
+    await tor.revoke(recordId);
     await loadAdminData();
   };
 
@@ -288,7 +288,7 @@ function App() {
           <IssueNewTOR onRecordCreated={handleRecordCreated} />
         )}
         {activeModule === 'registeredDocuments' && (
-          <RegisteredDocuments records={torRecords} onStatusChange={handleStatusChange} />
+          <RegisteredDocuments records={torRecords} onRevoke={handleRevoke} />
         )}
         {activeModule === 'auditTrail' && <AuditTrailLogs logs={auditLogsList} />}
       </div>

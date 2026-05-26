@@ -35,8 +35,17 @@ public class VerificationService {
     private static final String PHOTO_UNREADABLE_MESSAGE =
             "Could not read enough text from the photo. Retake the picture in good light, focused on the name, ID, and date issued.";
 
+    private static final String REVOKED_MESSAGE =
+            "This Transcript of Records has been revoked by the Office of the Registrar. "
+                    + "It is no longer valid for employment, transfer, or any official purpose.";
+
     /** DCN lookup only — returns masked registrar details for manual comparison (no photo). */
     public Map<String, Object> lookupByDcn(String dcn) {
+        Optional<TorRecord> revoked = findRevokedByDcn(dcn);
+        if (revoked.isPresent()) {
+            return revokedResult(revoked.get(), true);
+        }
+
         Optional<TorRecord> optional = torService.findActiveByDcn(dcn);
         if (optional.isEmpty()) {
             auditService.log(
@@ -58,6 +67,11 @@ public class VerificationService {
     }
 
     public Map<String, Object> verifyByDcnWithScannedText(String dcn, String extractedText) {
+        Optional<TorRecord> revoked = findRevokedByDcn(dcn);
+        if (revoked.isPresent()) {
+            return revokedResult(revoked.get(), false);
+        }
+
         Optional<TorRecord> optional = torService.findActiveByDcn(dcn);
         if (optional.isEmpty()) {
             auditService.log(
@@ -71,6 +85,11 @@ public class VerificationService {
     }
 
     public Map<String, Object> verifyByTokenWithScannedText(String token, String extractedText) {
+        Optional<TorRecord> revoked = findRevokedByToken(token);
+        if (revoked.isPresent()) {
+            return revokedResult(revoked.get(), false);
+        }
+
         Optional<TorRecord> optional = torRecordRepository.findByVerificationTokenAndDeletedFalse(token);
         if (optional.isEmpty()) {
             auditService.log(
@@ -86,6 +105,11 @@ public class VerificationService {
 
     /** QR verification: send TOR photo; OCR.space extracts text and matches registrar record. */
     public Map<String, Object> verifyByTokenWithPhoto(String token, MultipartFile photo) {
+        Optional<TorRecord> revoked = findRevokedByToken(token);
+        if (revoked.isPresent()) {
+            return revokedResult(revoked.get(), false);
+        }
+
         Optional<TorRecord> optional = torRecordRepository.findByVerificationTokenAndDeletedFalse(token);
         if (optional.isEmpty()) {
             auditService.log(
@@ -169,6 +193,40 @@ public class VerificationService {
         return successResult(
                 record,
                 successMessage + " (" + documentTextMatchService.summarizeFindings(extractedText, record) + ")");
+    }
+
+    private Optional<TorRecord> findRevokedByDcn(String dcn) {
+        if (dcn == null || dcn.isBlank()) {
+            return Optional.empty();
+        }
+        return torRecordRepository.findByDcnIgnoreCaseAndStatus(dcn.trim(), "Revoked");
+    }
+
+    private Optional<TorRecord> findRevokedByToken(String token) {
+        if (token == null || token.isBlank()) {
+            return Optional.empty();
+        }
+        return torRecordRepository.findByVerificationTokenAndStatus(token.trim(), "Revoked");
+    }
+
+    private Map<String, Object> revokedResult(TorRecord record, boolean manualVerification) {
+        auditService.log(
+                "Verification Failure",
+                record.getDcn(),
+                "Verification blocked — TOR revoked (DCN: " + record.getDcn() + ")",
+                PUBLIC_VERIFIER);
+
+        Map<String, Object> result = baseRecordResult(record, false);
+        result.put("revoked", true);
+        result.put("manualVerification", manualVerification);
+        result.put("overallStatus", "Revoked");
+        result.put("statusMessage", REVOKED_MESSAGE);
+        result.put(
+                "matchSummary",
+                manualVerification
+                        ? "This DCN is on file but the registrar has revoked this transcript."
+                        : "This QR code is on file but the registrar has revoked this transcript.");
+        return result;
     }
 
     private Map<String, Object> notFoundResult(String error) {

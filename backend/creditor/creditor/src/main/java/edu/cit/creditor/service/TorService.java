@@ -25,15 +25,25 @@ public class TorService {
     @Transactional
     public TorRecordResponse create(CreateTorRequest request, UUID actorId, String registrarLabel) {
         String normalizedDcn = request.getDcn().trim().toUpperCase();
-        Optional<TorRecord> existing = findActiveByDcn(normalizedDcn);
-        if (existing.isPresent()) {
-            TorRecord prior = existing.get();
-            if (isSameRegistration(prior, request)) {
-                return TorRecordResponse.from(prior);
+        Optional<TorRecord> existingDcn = torRecordRepository.findByDcnIgnoreCase(normalizedDcn);
+        if (existingDcn.isPresent()) {
+            TorRecord prior = existingDcn.get();
+            if ("Revoked".equalsIgnoreCase(prior.getStatus())) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "This DCN has been revoked and cannot be reused. Generate a new document control number.");
+            }
+            if (!prior.isDeleted()) {
+                if (isSameRegistration(prior, request)) {
+                    return TorRecordResponse.from(prior);
+                }
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "DCN already exists for a different student. Generate a new DCN or use another document control number.");
             }
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "DCN already exists for a different student. Generate a new DCN or use another document control number.");
+                    "DCN already exists. Generate a new document control number.");
         }
 
         TorRecord record = TorRecord.builder()
@@ -93,6 +103,12 @@ public class TorService {
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Record not found"));
 
+        if ("Revoked".equalsIgnoreCase(newStatus)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Use POST /api/tor/{id}/revoke to revoke a document.");
+        }
+
         String oldStatus = record.getStatus();
         record.setStatus(newStatus);
         record.setUpdatedAt(Instant.now());
@@ -102,6 +118,29 @@ public class TorService {
                 "Status Update",
                 record.getDcn(),
                 "Status of " + record.getDcn() + " changed from " + oldStatus + " to " + newStatus,
+                registrarLabel);
+
+        return TorRecordResponse.from(record);
+    }
+
+    @Transactional
+    public TorRecordResponse revoke(UUID id, String registrarLabel) {
+        TorRecord record = torRecordRepository.findById(id)
+                .filter(r -> !r.isDeleted())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Record not found"));
+
+        String dcn = record.getDcn();
+        record.setStatus("Revoked");
+        record.setDeleted(true);
+        record.setUploadedFileName(null);
+        record.setFileSize(null);
+        record.setUpdatedAt(Instant.now());
+        torRecordRepository.save(record);
+
+        auditService.log(
+                "Status Update",
+                dcn,
+                "TOR revoked — removed from registry and PDF deleted (DCN: " + dcn + ")",
                 registrarLabel);
 
         return TorRecordResponse.from(record);

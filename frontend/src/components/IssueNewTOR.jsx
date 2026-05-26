@@ -91,7 +91,8 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
       return record;
     } catch (err) {
       const msg = err.message || '';
-      if (!msg.toLowerCase().includes('dcn already exists')) {
+      const lower = msg.toLowerCase();
+      if (lower.includes('revoked') || !lower.includes('dcn already exists')) {
         throw err;
       }
       const { record } = await tor.getByDcn(dcn);

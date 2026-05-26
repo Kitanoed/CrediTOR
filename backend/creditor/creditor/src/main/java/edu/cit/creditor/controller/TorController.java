@@ -3,6 +3,7 @@ package edu.cit.creditor.controller;
 import edu.cit.creditor.dto.CreateTorRequest;
 import edu.cit.creditor.dto.TorRecordResponse;
 import edu.cit.creditor.service.AuditActorService;
+import edu.cit.creditor.service.FileStorageService;
 import edu.cit.creditor.service.TorService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import java.util.UUID;
 public class TorController {
 
     private final TorService torService;
+    private final FileStorageService fileStorageService;
     private final AuditActorService auditActorService;
 
     @PostMapping
@@ -46,6 +48,14 @@ public class TorController {
     @GetMapping("/{id}")
     public TorRecordResponse get(@PathVariable UUID id) {
         return torService.get(id);
+    }
+
+    @PostMapping("/{id}/revoke")
+    public Map<String, String> revoke(@PathVariable UUID id, Authentication authentication) {
+        UUID actorId = (UUID) authentication.getPrincipal();
+        TorRecordResponse record = torService.revoke(id, auditActorService.registrarLabel(actorId));
+        fileStorageService.delete(record.getDcn());
+        return Map.of("message", "TOR revoked and removed");
     }
 
     @PutMapping("/{id}/status")

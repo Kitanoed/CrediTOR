@@ -5,7 +5,7 @@ import { files } from '../api/client';
 import { TorQrModal } from './TorQrModal';
 import { TorPrintModal } from './TorPrintModal';
 
-export const RegisteredDocuments = ({ records, onStatusChange }) => {
+export const RegisteredDocuments = ({ records, onRevoke }) => {
   const [qrRecord, setQrRecord] = useState(null);
   const [printRecord, setPrintRecord] = useState(null);
   const [printPdfUrl, setPrintPdfUrl] = useState(null);
@@ -13,13 +13,17 @@ export const RegisteredDocuments = ({ records, onStatusChange }) => {
   const [revokingId, setRevokingId] = useState(null);
 
   const handleRevoke = async (id) => {
-    if (!window.confirm('Are you sure you want to revoke this document?')) {
+    if (
+      !window.confirm(
+        'Revoke and remove this TOR?\n\nThe PDF will be deleted and the record will be removed from this list. QR scans and DCN lookups will show that the document has been revoked.'
+      )
+    ) {
       return;
     }
-    
+
     setRevokingId(id);
     try {
-      await onStatusChange(id, 'Revoked');
+      await onRevoke(id);
     } catch (err) {
       alert(err.message || 'Failed to revoke document');
     } finally {
@@ -62,7 +66,7 @@ export const RegisteredDocuments = ({ records, onStatusChange }) => {
         </div>
 
         {/* Summary Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           <div className="bg-white rounded-lg p-6 border border-slate-200 shadow">
             <p className="text-slate-600 text-sm font-semibold mb-2">Total Documents</p>
             <p className="text-3xl font-bold text-slate-900">{records.length}</p>
@@ -74,10 +78,6 @@ export const RegisteredDocuments = ({ records, onStatusChange }) => {
           <div className="bg-white rounded-lg p-6 border border-slate-200 shadow">
             <p className="text-slate-600 text-sm font-semibold mb-2">Expired</p>
             <p className="text-3xl font-bold text-gray-600">{records.filter(r => r.status === 'Expired').length}</p>
-          </div>
-          <div className="bg-white rounded-lg p-6 border border-slate-200 shadow">
-            <p className="text-slate-600 text-sm font-semibold mb-2">Revoked</p>
-            <p className="text-3xl font-bold text-red-600">{records.filter(r => r.status === 'Revoked').length}</p>
           </div>
         </div>
 
@@ -139,20 +139,18 @@ export const RegisteredDocuments = ({ records, onStatusChange }) => {
                           <QrCode className="w-4 h-4" />
                           <span className="text-xs font-semibold">QR</span>
                         </button>
-                        {record.status !== 'Revoked' && (
-                          <button
-                            type="button"
-                            onClick={() => handleRevoke(record.id)}
-                            disabled={revokingId === record.id}
-                            className="inline-flex items-center gap-1 px-3 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition disabled:opacity-40"
-                            title="Revoke this document"
-                          >
-                            <AlertCircle className="w-4 h-4" />
-                            <span className="text-xs font-semibold">
-                              {revokingId === record.id ? '…' : 'Revoke'}
-                            </span>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRevoke(record.id)}
+                          disabled={revokingId === record.id}
+                          className="inline-flex items-center gap-1 px-3 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition disabled:opacity-40"
+                          title="Revoke and remove this TOR"
+                        >
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="text-xs font-semibold">
+                            {revokingId === record.id ? '…' : 'Revoke'}
+                          </span>
+                        </button>
                       </div>
                     </td>
                   </tr>

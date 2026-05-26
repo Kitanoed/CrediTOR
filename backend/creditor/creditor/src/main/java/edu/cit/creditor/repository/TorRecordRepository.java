@@ -14,4 +14,10 @@ public interface TorRecordRepository extends JpaRepository<TorRecord, UUID> {
     Optional<TorRecord> findByDcnIgnoreCaseAndDeletedFalse(String dcn);
 
     Optional<TorRecord> findByVerificationTokenAndDeletedFalse(String verificationToken);
+
+    Optional<TorRecord> findByDcnIgnoreCase(String dcn);
+
+    Optional<TorRecord> findByDcnIgnoreCaseAndStatus(String dcn, String status);
+
+    Optional<TorRecord> findByVerificationTokenAndStatus(String verificationToken, String status);
 }

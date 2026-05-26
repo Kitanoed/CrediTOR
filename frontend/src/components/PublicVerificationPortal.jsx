@@ -278,6 +278,19 @@ const HeroDecorations = () => (
 );
 
 const mapVerificationResponse = (data) => {
+  if (data.found && data.revoked) {
+    return {
+      found: true,
+      verified: false,
+      revoked: true,
+      identityMatch: true,
+      record: data.record,
+      overallStatus: data.overallStatus || 'Revoked',
+      statusMessage: data.statusMessage,
+      matchSummary: data.matchSummary,
+      manualVerification: data.manualVerification,
+    };
+  }
   if (data.found && data.identityMatch === false) {
     return {
       found: true,

@@ -167,6 +167,25 @@ export const VerificationResultView = ({
     );
   }
 
+  if (result.revoked) {
+    const dcn = result.record?.dcn;
+    return failureShell(
+      'bg-red-600 border-red-700',
+      result.overallStatus || 'Revoked',
+      result.statusMessage ||
+        'This Transcript of Records has been revoked by the registrar and is no longer valid.',
+      <>
+        {dcn && (
+          <li>
+            Document control number on file: <strong className="font-mono">{dcn}</strong>
+          </li>
+        )}
+        <li>Do not accept this TOR for employment, transfer, or any official purpose.</li>
+        <li>Contact the Office of the Registrar if you need a current or replacement transcript.</li>
+      </>
+    );
+  }
+
   if (result.identityMatch === false) {
     return failureShell(
       'bg-amber-600 border-amber-700',

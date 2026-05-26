@@ -94,6 +94,8 @@ export const tor = {
       body: JSON.stringify({ status }),
     }),
 
+  revoke: (id) => apiCall(`/tor/${id}/revoke`, { method: 'POST' }),
+
   delete: (id) => apiCall(`/tor/${id}`, { method: 'DELETE' }),
 };
 
