@@ -1,36 +1,30 @@
 import React, { useState } from 'react';
-import { Edit2, Save, X, QrCode, Printer } from 'lucide-react';
+import { QrCode, Printer, AlertCircle } from 'lucide-react';
 import { getStatusColor } from '../services/utils';
 import { files } from '../api/client';
 import { TorQrModal } from './TorQrModal';
 import { TorPrintModal } from './TorPrintModal';
 
 export const RegisteredDocuments = ({ records, onStatusChange }) => {
-  const [editingId, setEditingId] = useState(null);
-  const [editingStatus, setEditingStatus] = useState('');
   const [qrRecord, setQrRecord] = useState(null);
   const [printRecord, setPrintRecord] = useState(null);
   const [printPdfUrl, setPrintPdfUrl] = useState(null);
   const [printingDcn, setPrintingDcn] = useState(null);
+  const [revokingId, setRevokingId] = useState(null);
 
-  const handleEditStatus = (id, currentStatus) => {
-    setEditingId(id);
-    setEditingStatus(currentStatus);
-  };
-
-  const handleSaveStatus = async (id) => {
-    try {
-      await onStatusChange(id, editingStatus);
-      setEditingId(null);
-      setEditingStatus('');
-    } catch (err) {
-      alert(err.message || 'Failed to update status');
+  const handleRevoke = async (id) => {
+    if (!window.confirm('Are you sure you want to revoke this document?')) {
+      return;
     }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditingStatus('');
+    
+    setRevokingId(id);
+    try {
+      await onStatusChange(id, 'Revoked');
+    } catch (err) {
+      alert(err.message || 'Failed to revoke document');
+    } finally {
+      setRevokingId(null);
+    }
   };
 
   const handleClosePrint = () => {
@@ -117,73 +111,49 @@ export const RegisteredDocuments = ({ records, onStatusChange }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {editingId === record.id ? (
-                        <div className="flex gap-2 items-center">
-                          <select
-                            value={editingStatus}
-                            onChange={(e) => setEditingStatus(e.target.value)}
-                            className="px-2 py-1 border border-slate-300 rounded text-sm"
-                          >
-                            <option value="Active">Active</option>
-                            <option value="Revoked">Revoked</option>
-                            <option value="Expired">Expired</option>
-                          </select>
-                          <button
-                            onClick={() => handleSaveStatus(record.id)}
-                            className="text-green-600 hover:text-green-700"
-                            title="Save"
-                          >
-                            <Save className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            className="text-red-600 hover:text-red-700"
-                            title="Cancel"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${getStatusColor(record.status)}`}>
-                          {record.status}
-                        </span>
-                      )}
+                      <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${getStatusColor(record.status)}`}>
+                        {record.status}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      {editingId !== record.id && (
-                        <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePrint(record)}
+                          disabled={!record.uploadedFileName || printingDcn === record.dcn}
+                          className="inline-flex items-center gap-1 px-3 py-1 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded transition disabled:opacity-40"
+                          title="Print stamped TOR PDF"
+                        >
+                          <Printer className="w-4 h-4" />
+                          <span className="text-xs font-semibold">
+                            {printingDcn === record.dcn ? '…' : 'Print'}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setQrRecord(record)}
+                          disabled={!record.verificationToken}
+                          className="inline-flex items-center gap-1 px-3 py-1 text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition disabled:opacity-40"
+                          title="View verification QR code"
+                        >
+                          <QrCode className="w-4 h-4" />
+                          <span className="text-xs font-semibold">QR</span>
+                        </button>
+                        {record.status !== 'Revoked' && (
                           <button
                             type="button"
-                            onClick={() => handlePrint(record)}
-                            disabled={!record.uploadedFileName || printingDcn === record.dcn}
-                            className="inline-flex items-center gap-1 px-3 py-1 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded transition disabled:opacity-40"
-                            title="Print stamped TOR PDF"
+                            onClick={() => handleRevoke(record.id)}
+                            disabled={revokingId === record.id}
+                            className="inline-flex items-center gap-1 px-3 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition disabled:opacity-40"
+                            title="Revoke this document"
                           >
-                            <Printer className="w-4 h-4" />
+                            <AlertCircle className="w-4 h-4" />
                             <span className="text-xs font-semibold">
-                              {printingDcn === record.dcn ? '…' : 'Print'}
+                              {revokingId === record.id ? '…' : 'Revoke'}
                             </span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setQrRecord(record)}
-                            disabled={!record.verificationToken}
-                            className="inline-flex items-center gap-1 px-3 py-1 text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition disabled:opacity-40"
-                            title="View verification QR code"
-                          >
-                            <QrCode className="w-4 h-4" />
-                            <span className="text-xs font-semibold">QR</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleEditStatus(record.id, record.status)}
-                            className="inline-flex items-center gap-1 px-3 py-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                            <span className="text-xs font-semibold">Edit</span>
-                          </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
