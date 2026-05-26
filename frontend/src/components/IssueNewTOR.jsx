@@ -8,10 +8,11 @@ import { SuccessModal } from './SuccessModal';
 
 const emptyForm = () => ({
   studentId: '',
-  fullName: '',
+  firstName: '',
+  middleName: '',
+  lastName: '',
   dcn: '',
   dateIssued: new Date().toISOString().split('T')[0],
-  status: 'Active',
   uploadedFileName: '',
 });
 
@@ -79,11 +80,14 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
 
   const resolveTorRecord = async () => {
     const studentId = formData.studentId.trim();
-    const fullName = formData.fullName.trim();
+    const firstName = formData.firstName.trim();
+    const middleName = formData.middleName.trim();
+    const lastName = formData.lastName.trim();
+    const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ');
     const dcn = formData.dcn.trim();
 
     try {
-      const { record } = await tor.create(studentId, fullName, dcn, formData.dateIssued, formData.status);
+      const { record } = await tor.create(studentId, fullName, dcn, formData.dateIssued, 'Active');
       return record;
     } catch (err) {
       const msg = err.message || '';
@@ -102,8 +106,8 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
   };
 
   const handleRegisterAndGenerate = async () => {
-    if (!formData.studentId?.trim() || !formData.fullName?.trim() || !formData.dcn?.trim() || !uploadedFile) {
-      alert('Please complete all fields and upload the TOR PDF');
+    if (!formData.studentId?.trim() || !formData.firstName?.trim() || !formData.lastName?.trim() || !formData.dcn?.trim() || !uploadedFile) {
+      alert('Please complete all required fields and upload the TOR PDF');
       return;
     }
 
@@ -129,6 +133,16 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
 
       await onRecordCreated(record);
 
+      revokePreviewUrl();
+      const url = URL.createObjectURL(stampedBlob);
+      previewUrlRef.current = url;
+      setPreviewPdfUrl(url);
+      setPreviewRecord({
+        ...record,
+        verificationUrl,
+        uploadedFileName: stampedFile.name,
+      });
+
       setSuccessRecord({
         ...record,
         verificationUrl,
@@ -149,7 +163,6 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
 
   const handleSuccessConfirm = () => {
     setSuccessRecord(null);
-    handleReset();
   };
 
   const handlePrint = () => {
@@ -241,14 +254,36 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
                   </button>
                 </div>
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Full Name</label>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">First Name <span className="text-red-500">*</span></label>
                 <input
                   type="text"
-                  name="fullName"
-                  value={formData.fullName}
+                  name="firstName"
+                  value={formData.firstName}
                   onChange={handleInputChange}
-                  placeholder="e.g., Juan P. Dela Cruz"
+                  placeholder="e.g., Juan"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Middle Name</label>
+                <input
+                  type="text"
+                  name="middleName"
+                  value={formData.middleName}
+                  onChange={handleInputChange}
+                  placeholder="e.g., Perez"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Last Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  name="lastName"
+                  value={formData.lastName}
+                  onChange={handleInputChange}
+                  placeholder="e.g., Dela Cruz"
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                 />
               </div>
@@ -261,19 +296,6 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
                   onChange={handleInputChange}
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Document Status</label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Revoked">Revoked</option>
-                  <option value="Expired">Expired</option>
-                </select>
               </div>
             </div>
 
