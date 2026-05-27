@@ -5,7 +5,7 @@ import { files } from '../api/client';
 import { TorQrModal } from './TorQrModal';
 import { TorPrintModal } from './TorPrintModal';
 
-export const RegisteredDocuments = ({ records, onRevoke }) => {
+export const RegisteredDocuments = ({ records, revokedCount = 0, onRevoke }) => {
   const [qrRecord, setQrRecord] = useState(null);
   const [printRecord, setPrintRecord] = useState(null);
   const [printPdfUrl, setPrintPdfUrl] = useState(null);
@@ -76,8 +76,8 @@ export const RegisteredDocuments = ({ records, onRevoke }) => {
             <p className="text-3xl font-bold text-green-600">{records.filter(r => r.status === 'Active').length}</p>
           </div>
           <div className="bg-white rounded-lg p-6 border border-slate-200 shadow">
-            <p className="text-slate-600 text-sm font-semibold mb-2">Expired</p>
-            <p className="text-3xl font-bold text-gray-600">{records.filter(r => r.status === 'Expired').length}</p>
+            <p className="text-slate-600 text-sm font-semibold mb-2">Revoked</p>
+            <p className="text-3xl font-bold text-red-600">{revokedCount}</p>
           </div>
         </div>
 
