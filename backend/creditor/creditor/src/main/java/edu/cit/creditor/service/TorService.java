@@ -67,6 +67,10 @@ public class TorService {
         return TorRecordResponse.from(record);
     }
 
+    public long countRevoked() {
+        return torRecordRepository.countByStatusIgnoreCase("Revoked");
+    }
+
     public List<TorRecordResponse> list(String status, String search) {
         String statusFilter = blankToNull(status);
         String searchFilter = blankToNull(search);
