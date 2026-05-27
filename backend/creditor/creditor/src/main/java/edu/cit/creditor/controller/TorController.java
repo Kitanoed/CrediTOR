@@ -37,7 +37,10 @@ public class TorController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String search) {
         var records = torService.list(status, search);
-        return Map.of("records", records, "total", records.size());
+        return Map.of(
+                "records", records,
+                "total", records.size(),
+                "revokedCount", torService.countRevoked());
     }
 
     @GetMapping("/by-dcn/{dcn}")
