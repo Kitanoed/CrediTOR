@@ -79,6 +79,7 @@ function App() {
     sessionStorage.setItem(ADMIN_MODULE_KEY, module);
   }, []);
   const [torRecords, setTorRecords] = useState([]);
+  const [revokedCount, setRevokedCount] = useState(0);
   const [auditLogsList, setAuditLogsList] = useState([]);
   const [verificationToken, setVerificationToken] = useState(null);
 
@@ -90,6 +91,7 @@ function App() {
   const loadAdminData = useCallback(async () => {
     const [torRes, auditRes] = await Promise.all([tor.list(1, 100), auditLogs.list(1, 100)]);
     setTorRecords(torRes.records || []);
+    setRevokedCount(torRes.revokedCount ?? 0);
     setAuditLogsList(auditRes.logs || []);
   }, []);
 
@@ -288,7 +290,11 @@ function App() {
           <IssueNewTOR onRecordCreated={handleRecordCreated} />
         )}
         {activeModule === 'registeredDocuments' && (
-          <RegisteredDocuments records={torRecords} onRevoke={handleRevoke} />
+          <RegisteredDocuments
+            records={torRecords}
+            revokedCount={revokedCount}
+            onRevoke={handleRevoke}
+          />
         )}
         {activeModule === 'auditTrail' && <AuditTrailLogs logs={auditLogsList} />}
       </div>
