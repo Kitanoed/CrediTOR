@@ -134,9 +134,12 @@ public class OcrSpaceService {
     }
 
     private byte[] compressImageUnderLimit(byte[] raw) throws Exception {
-        byte[] compressed = encodeJpeg(scaleIfNeeded(readImage(raw)), 0.82f);
+        // Decode once — avoids keeping multiple full-resolution BufferedImages alive.
+        BufferedImage source = readImage(raw);
         float quality = 0.82f;
         int edge = maxImageEdge;
+
+        byte[] compressed = encodeJpeg(scaleToMaxEdge(source, Math.max(320, edge)), quality);
 
         while (compressed.length > MAX_BYTES && (quality > 0.45f || edge > 480)) {
             if (quality > 0.45f) {
@@ -144,7 +147,7 @@ public class OcrSpaceService {
             } else {
                 edge = (int) (edge * 0.85);
             }
-            compressed = encodeJpeg(scaleToMaxEdge(readImage(raw), edge), quality);
+            compressed = encodeJpeg(scaleToMaxEdge(source, Math.max(1, edge)), quality);
         }
         return compressed;
     }
