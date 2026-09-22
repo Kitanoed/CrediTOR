@@ -26,12 +26,12 @@ public class FileController {
         return Map.of("message", "File uploaded successfully");
     }
 
-    @GetMapping("/download/{dcn}")
+    @GetMapping("/download/{dcn:.+}")
     public ResponseEntity<Resource> download(@PathVariable String dcn) {
         Resource resource = fileStorageService.load(dcn);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + dcn + ".pdf\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + dcn + ".pdf\"")
                 .body(resource);
     }
 

@@ -8,9 +8,15 @@ RUN mvn clean package -DskipTests
 # Run stage
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
+
+# Create upload directory inside container
+RUN mkdir -p /app/uploads
+
 COPY --from=build /app/target/*.jar app.jar
+
 EXPOSE 8081
 ENV PORT=8081
+
 ENTRYPOINT ["java", \
   "-XX:+UseContainerSupport", \
   "-XX:InitialRAMPercentage=40.0", \
