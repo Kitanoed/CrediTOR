@@ -1,14 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { QrCode, Printer, AlertCircle } from 'lucide-react';
 import { getStatusColor } from '../services/utils';
 import { files } from '../api/client';
+import { printPdfFromUrl } from '../services/printPdf';
 import { TorQrModal } from './TorQrModal';
-import { TorPrintModal } from './TorPrintModal';
 
 export const RegisteredDocuments = ({ records, revokedCount = 0, onRevoke }) => {
   const [qrRecord, setQrRecord] = useState(null);
-  const [printRecord, setPrintRecord] = useState(null);
-  const [printPdfUrl, setPrintPdfUrl] = useState(null);
   const [printingDcn, setPrintingDcn] = useState(null);
   const [revokingId, setRevokingId] = useState(null);
 
@@ -31,26 +29,18 @@ export const RegisteredDocuments = ({ records, revokedCount = 0, onRevoke }) => 
     }
   };
 
-  const handleClosePrint = () => {
-    if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
-    setPrintPdfUrl(null);
-    setPrintRecord(null);
-  };
-
   const handlePrint = async (record) => {
-    if (!record.uploadedFileName) {
-      alert('No PDF file is attached to this TOR.');
-      return;
-    }
-
     setPrintingDcn(record.dcn);
+    const previewWindow = window.open('', '_blank');
     try {
+      if (!previewWindow) {
+        throw new Error('Please allow pop-ups for this site to preview the TOR PDF.');
+      }
       const blob = await files.download(record.dcn);
-      const url = URL.createObjectURL(blob);
-      setPrintPdfUrl(url);
-      setPrintRecord(record);
+      await printPdfFromUrl(blob, previewWindow);
     } catch (err) {
-      alert(err.message || 'Could not load the TOR PDF for printing.');
+      previewWindow?.close();
+      alert(err.message || 'Could not print the TOR PDF.');
     } finally {
       setPrintingDcn(null);
     }
@@ -120,7 +110,7 @@ export const RegisteredDocuments = ({ records, revokedCount = 0, onRevoke }) => 
                         <button
                           type="button"
                           onClick={() => handlePrint(record)}
-                          disabled={!record.uploadedFileName || printingDcn === record.dcn}
+                          disabled={!record.dcn || printingDcn === record.dcn}
                           className="inline-flex items-center gap-1 px-3 py-1 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded transition disabled:opacity-40"
                           title="Print stamped TOR PDF"
                         >
@@ -170,9 +160,6 @@ export const RegisteredDocuments = ({ records, revokedCount = 0, onRevoke }) => 
       </div>
 
       {qrRecord && <TorQrModal record={qrRecord} onClose={() => setQrRecord(null)} />}
-      {printRecord && printPdfUrl && (
-        <TorPrintModal record={printRecord} pdfUrl={printPdfUrl} onClose={handleClosePrint} />
-      )}
     </div>
   );
 };

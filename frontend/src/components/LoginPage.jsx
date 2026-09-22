@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Shield, Mail, Lock, AlertCircle } from 'lucide-react';
 
 const LoginPage = ({ onLogin, isLoading, error, onBackToPublic }) => {
-  const [email, setEmail] = useState('registrar@creditor.test');
-  const [password, setPassword] = useState('TestPassword123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e) => {
@@ -129,21 +129,11 @@ const LoginPage = ({ onLogin, isLoading, error, onBackToPublic }) => {
             </button>
           </form>
 
-          {/* Card Footer */}
-          <div className="px-8 py-4 bg-slate-50 border-t border-slate-200">
-            <p className="text-sm text-slate-600 text-center">
-              Demo Credentials:
-              <br />
-              <span className="font-mono text-xs text-slate-700">
-                registrar@creditor.test / TestPassword123!
-              </span>
-            </p>
-          </div>
         </div>
 
         {/* Footer Links */}
         <div className="text-center mt-8 text-slate-400 text-sm space-y-2">
-          <p>© 2024 CrediTOR. All rights reserved.</p>
+          <p>© 2025 CrediTOR. All rights reserved.</p>
           <div className="flex justify-center gap-4">
             <a href="#" className="hover:text-white transition">Privacy Policy</a>
             <span>•</span>

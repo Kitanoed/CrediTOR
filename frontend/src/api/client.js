@@ -177,16 +177,31 @@ export const files = {
     });
   },
 
-  download: (dcn) => {
+  download: async (dcn) => {
     const token = getAuthToken();
     const headers = {};
     if (token) headers.Authorization = `Bearer ${token}`;
-    return fetch(`${API_BASE}/files/download/${encodeURIComponent(dcn)}`, { headers }).then(
-      (res) => {
-        if (!res.ok) throw new Error('Download failed');
-        return res.blob();
+
+    const res = await fetch(`${API_BASE}/files/download/${encodeURIComponent(dcn)}`, { headers });
+    const contentType = res.headers.get('content-type') || '';
+
+    if (!res.ok) {
+      let message = 'Could not download the TOR PDF.';
+      if (contentType.includes('application/json')) {
+        try {
+          const data = await res.json();
+          message = data?.message || data?.detail || data?.error || message;
+        } catch {
+          /* keep default message */
+        }
+      } else if (res.status === 404) {
+        message = 'No PDF file was found for this TOR.';
       }
-    );
+      throw new Error(message);
+    }
+
+    const buffer = await res.arrayBuffer();
+    return new Blob([buffer], { type: 'application/pdf' });
   },
 
   delete: (dcn) => apiCall(`/files/${encodeURIComponent(dcn)}`, { method: 'DELETE' }),

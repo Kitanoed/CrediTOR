@@ -3,6 +3,7 @@ import { Upload, FileText, Printer } from 'lucide-react';
 import { generateDCN } from '../services/utils';
 import { buildVerificationUrl, getPublicOrigin, isLocalOnlyOrigin } from '../services/verificationUrl';
 import { stampTorPdf } from '../services/pdfStampService';
+import { printPdfFromUrl } from '../services/printPdf';
 import { tor, files } from '../api/client';
 import { SuccessModal } from './SuccessModal';
 
@@ -166,13 +167,12 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
     setSuccessRecord(null);
   };
 
-  const handlePrint = () => {
-    const frame = document.getElementById('tor-print-frame');
-    if (frame?.contentWindow) {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-    } else {
-      window.print();
+  const handlePrint = async () => {
+    if (!previewPdfUrl) return;
+    try {
+      await printPdfFromUrl(previewPdfUrl);
+    } catch (err) {
+      alert(err.message || 'Could not print the TOR PDF.');
     }
   };
 

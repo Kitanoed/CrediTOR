@@ -1,14 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, Printer } from 'lucide-react';
+import { printPdfFromUrl } from '../services/printPdf';
 
 export const TorPrintModal = ({ record, pdfUrl, onClose }) => {
+  const [isPrinting, setIsPrinting] = useState(false);
   if (!record || !pdfUrl) return null;
 
-  const handlePrint = () => {
-    const frame = document.getElementById('reg-doc-print-frame');
-    if (frame?.contentWindow) {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
+  const handlePrint = async () => {
+    setIsPrinting(true);
+    try {
+      await printPdfFromUrl(pdfUrl);
+    } catch (err) {
+      alert(err.message || 'Could not print the TOR PDF.');
+    } finally {
+      setIsPrinting(false);
     }
   };
 
@@ -47,10 +52,11 @@ export const TorPrintModal = ({ record, pdfUrl, onClose }) => {
           <button
             type="button"
             onClick={handlePrint}
-            className="inline-flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700"
+            disabled={isPrinting}
+            className="inline-flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             <Printer className="w-4 h-4" />
-            Print
+            {isPrinting ? 'Preparing…' : 'Print'}
           </button>
         </div>
       </div>
