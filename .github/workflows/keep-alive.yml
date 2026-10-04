@@ -25,28 +25,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
+    env:
+      # Resolve GitHub vars here (valid in env block); shell steps use $BACKEND_URL etc.
+      BACKEND_URL: ${{ vars.BACKEND_URL || 'https://creditor-i1pg.onrender.com' }}
+      FRONTEND_URL: ${{ vars.FRONTEND_URL || '' }}
+
     steps:
       - name: Ping backend health endpoint
         run: |
-          echo "🏓 Pinging backend at $(date -u)"
+          echo "Pinging backend at $(date -u)"
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             --max-time 30 \
-            "${{ vars.BACKEND_URL || 'https://creditor-i1pg.onrender.com' }}/api/health")
+            "${BACKEND_URL}/api/health")
           echo "Backend responded with HTTP $STATUS"
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
-            echo "✅ Backend is alive"
+            echo "Backend is alive"
           else
-            echo "⚠️  Backend returned $STATUS — it may still be waking up"
+            echo "Backend returned $STATUS - it may still be waking up"
           fi
 
       - name: Ping frontend (warm edge cache)
         run: |
-          if [ -n "${{ vars.FRONTEND_URL }}" ]; then
-            echo "🏓 Pinging frontend at $(date -u)"
+          if [ -n "${FRONTEND_URL}" ]; then
+            echo "Pinging frontend at $(date -u)"
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               --max-time 15 \
-              "${{ vars.FRONTEND_URL }}")
+              "${FRONTEND_URL}")
             echo "Frontend responded with HTTP $STATUS"
           else
-            echo "ℹ️  FRONTEND_URL not set — skipping (Vercel doesn't cold-start anyway)"
+            echo "FRONTEND_URL not set - skipping (Vercel does not cold-start anyway)"
           fi
