@@ -25,28 +25,42 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
+    env:
+      # Resolve GitHub vars here (valid in env block); shell steps use $BACKEND_URL etc.
+      BACKEND_URL: ${{ vars.BACKEND_URL || 'https://creditor-i1pg.onrender.com' }}
+      FRONTEND_URL: ${{ vars.FRONTEND_URL || '' }}
+
     steps:
       - name: Ping backend health endpoint
         run: |
-          echo "🏓 Pinging backend at $(date -u)"
+          echo "Pinging backend at $(date -u)"
+          CURL_EXIT=0
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 30 \
-            "${{ vars.BACKEND_URL || 'https://creditor-i1pg.onrender.com' }}/api/health")
-          echo "Backend responded with HTTP $STATUS"
-          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
-            echo "✅ Backend is alive"
+            --max-time 60 \
+            "${BACKEND_URL}/api/health") || CURL_EXIT=$?
+          if [ "$CURL_EXIT" -eq 28 ]; then
+            echo "Request timed out (exit 28) - Render is cold-starting, ping was still sent"
+          elif [ "$CURL_EXIT" -ne 0 ]; then
+            echo "curl error (exit $CURL_EXIT) - network issue, skipping"
+          elif [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+            echo "Backend is alive (HTTP $STATUS)"
           else
-            echo "⚠️  Backend returned $STATUS — it may still be waking up"
+            echo "Backend returned HTTP $STATUS - it may still be waking up"
           fi
 
       - name: Ping frontend (warm edge cache)
         run: |
-          if [ -n "${{ vars.FRONTEND_URL }}" ]; then
-            echo "🏓 Pinging frontend at $(date -u)"
+          if [ -n "${FRONTEND_URL}" ]; then
+            echo "Pinging frontend at $(date -u)"
+            CURL_EXIT=0
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               --max-time 15 \
-              "${{ vars.FRONTEND_URL }}")
-            echo "Frontend responded with HTTP $STATUS"
+              "${FRONTEND_URL}") || CURL_EXIT=$?
+            if [ "$CURL_EXIT" -ne 0 ]; then
+              echo "Frontend curl error (exit $CURL_EXIT) - skipping"
+            else
+              echo "Frontend responded with HTTP $STATUS"
+            fi
           else
-            echo "ℹ️  FRONTEND_URL not set — skipping (Vercel doesn't cold-start anyway)"
+            echo "FRONTEND_URL not set - skipping (Vercel does not cold-start anyway)"
           fi
