@@ -1,34 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { AdminSidebar } from './components/AdminSidebar';
-import { IssueNewTOR } from './components/IssueNewTOR';
-import { RegisteredDocuments } from './components/RegisteredDocuments';
-import { AuditTrailLogs } from './components/AuditTrailLogs';
+import { FeedbackMessage } from './components/FeedbackMessage';
 import { PublicVerificationPortal } from './components/PublicVerificationPortal';
 import { auth, setAuthToken, getAuthToken, health, tor, auditLogs } from './api/client';
 import LoginPage from './components/LoginPage';
 
-function BackendUnavailable({ error, onRetry }) {
+const IssueNewTOR = lazy(() => import('./components/IssueNewTOR').then((module) => ({ default: module.IssueNewTOR })));
+const RegisteredDocuments = lazy(() => import('./components/RegisteredDocuments').then((module) => ({ default: module.RegisteredDocuments })));
+const AuditTrailLogs = lazy(() => import('./components/AuditTrailLogs').then((module) => ({ default: module.AuditTrailLogs })));
+
+function BackendUnavailable({ onRetry }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
       <div className="max-w-md w-full text-center bg-white rounded-2xl shadow-lg p-8 border border-slate-200">
-        <h1 className="text-xl font-bold text-slate-900 mb-2">Backend unavailable</h1>
+        <h1 className="text-xl font-bold text-slate-900 mb-2">Connection unavailable</h1>
         <p className="text-slate-600 text-sm mb-4">
-          The frontend could not reach the Spring Boot API at{' '}
-          <code className="text-slate-800">/api</code> (proxied to Spring Boot on port 8081).
-        </p>
-        {error && (
-          <p className="text-red-600 text-xs mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-            {error}
-          </p>
-        )}
-        <code className="text-xs bg-slate-100 px-3 py-2 rounded block text-left text-slate-700 mb-4">
-          cd backend/creditor/creditor
-          <br />
-          .\mvnw.cmd spring-boot:run
-        </code>
-        <p className="text-xs text-slate-500 mb-4">
-          Supabase settings go in <code>application.properties</code> or a <code>.env</code> file in
-          that folder. If port 8080 is already in use, stop the other process and restart.
+          We could not reach the registrar service. Check your connection and try again.
         </p>
         <button
           type="button"
@@ -56,21 +43,18 @@ const readStoredAdminModule = () => {
 
 function App() {
   const [backendReady, setBackendReady] = useState(false);
-  const [backendError, setBackendError] = useState(null);
-  const hasQrTokenOnLoad = () => {
-    const params = new URLSearchParams(window.location.search);
-    return Boolean(params.get('token'));
-  };
-
-  const [checkingBackend, setCheckingBackend] = useState(
-    () => !hasQrTokenOnLoad() && !sessionStorage.getItem('creditor.backendOk')
-  );
+  const [checkingBackend, setCheckingBackend] = useState(true);
+  const [adminDataError, setAdminDataError] = useState('');
+  const connectionCheckRef = useRef(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const [portal, setPortal] = useState('public');
+  const [portal, setPortal] = useState(() =>
+    !new URLSearchParams(window.location.search).get('token') && window.location.pathname.endsWith('/login')
+      ? 'admin' : 'public'
+  );
   const [activeModule, setActiveModuleState] = useState(readStoredAdminModule);
 
   const setActiveModule = useCallback((module) => {
@@ -81,7 +65,7 @@ function App() {
   const [torRecords, setTorRecords] = useState([]);
   const [revokedCount, setRevokedCount] = useState(0);
   const [auditLogsList, setAuditLogsList] = useState([]);
-  const [verificationToken, setVerificationToken] = useState(null);
+  const [verificationToken, setVerificationToken] = useState(() => new URLSearchParams(window.location.search).get('token'));
 
   const loadAuditLogs = useCallback(async () => {
     const auditRes = await auditLogs.list(1, 100);
@@ -89,26 +73,30 @@ function App() {
   }, []);
 
   const loadAdminData = useCallback(async () => {
-    const [torRes, auditRes] = await Promise.all([tor.list(1, 100), auditLogs.list(1, 100)]);
+    const torRes = await tor.list(1, 100);
     setTorRecords(torRes.records || []);
     setRevokedCount(torRes.revokedCount ?? 0);
-    setAuditLogsList(auditRes.logs || []);
+    setAdminDataError('');
   }, []);
 
   /** Refresh audit logs while the Audit Trail screen is open (verifications, etc.). */
   useEffect(() => {
-    if (!isLoggedIn || activeModule !== 'auditTrail') {
+    if (!isLoggedIn || portal !== 'admin' || activeModule !== 'auditTrail') {
       return undefined;
     }
 
     let cancelled = false;
 
+    let refreshing = false;
     const refresh = async () => {
-      if (cancelled) return;
+      if (cancelled || refreshing) return;
+      refreshing = true;
       try {
         await loadAuditLogs();
       } catch (err) {
         console.error('Audit log refresh failed:', err);
+      } finally {
+        refreshing = false;
       }
     };
 
@@ -119,22 +107,19 @@ function App() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [isLoggedIn, activeModule, loadAuditLogs]);
+  }, [isLoggedIn, portal, activeModule, loadAuditLogs]);
 
-  const checkBackend = useCallback(async () => {
-    setCheckingBackend(true);
-    setBackendError(null);
-    try {
-      await health();
+  const checkBackend = useCallback(() => {
+    if (connectionCheckRef.current) return connectionCheckRef.current;
+    const request = health().then(async () => {
       setBackendReady(true);
-      sessionStorage.setItem('creditor.backendOk', '1');
 
       if (getAuthToken()) {
         try {
           const userData = await auth.getMe();
           setCurrentUser(userData.user);
           setIsLoggedIn(true);
-          await loadAdminData();
+          await loadAdminData().catch(() => setAdminDataError('Records could not be loaded. Try loading them again.'));
         } catch {
           setAuthToken(null);
           setCurrentUser(null);
@@ -143,13 +128,20 @@ function App() {
           setAuditLogsList([]);
         }
       }
-    } catch (err) {
+    }).catch(() => {
       setBackendReady(false);
-      setBackendError(err.message || 'Connection failed');
-    } finally {
+    }).finally(() => {
       setCheckingBackend(false);
-    }
+      connectionCheckRef.current = null;
+    });
+    connectionCheckRef.current = request;
+    return request;
   }, [loadAdminData]);
+
+  const retryConnection = () => {
+    setCheckingBackend(true);
+    checkBackend();
+  };
 
   const goToPublicPortal = useCallback(() => {
     setVerificationToken(null);
@@ -160,25 +152,6 @@ function App() {
   const goToRegistrarLogin = useCallback(() => {
     setPortal('admin');
     window.history.replaceState({}, '', '/login');
-  }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    const path = window.location.pathname;
-    const onVerifyRoute = path === '/verify' || path.endsWith('/verify');
-    const onLoginRoute = path === '/login' || path.endsWith('/login');
-
-    if (token) {
-      setVerificationToken(token);
-      setPortal('public');
-    } else if (onVerifyRoute) {
-      setPortal('public');
-    } else if (onLoginRoute) {
-      setPortal('admin');
-    } else {
-      setPortal('public');
-    }
   }, []);
 
   useEffect(() => {
@@ -195,7 +168,7 @@ function App() {
       setIsLoggedIn(true);
       setPortal('admin');
       window.history.replaceState({}, '', '/login');
-      await loadAdminData();
+      await loadAdminData().catch(() => setAdminDataError('You are signed in, but records could not be loaded. Try loading them again.'));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -222,26 +195,26 @@ function App() {
   };
 
   const handleRecordCreated = async () => {
-    await loadAdminData();
+    await loadAdminData().catch(() => setAdminDataError('The TOR was saved, but the document list could not refresh. Reload the list before making another change.'));
   };
 
   const handleRevoke = async (recordId) => {
     await tor.revoke(recordId);
-    await loadAdminData();
+    setTorRecords((records) => records.filter((record) => record.id !== recordId));
+    setRevokedCount((count) => count + 1);
+    await loadAdminData().catch(() => setAdminDataError('The TOR was revoked, but the document list could not refresh. Reload the list to see the latest records.'));
   };
 
-  const qrTokenActive = hasQrTokenOnLoad() || verificationToken;
-
-  if (checkingBackend && !qrTokenActive) {
+  if (checkingBackend && portal === 'admin') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-600">
+      <div role="status" className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-600">
         Connecting to server…
       </div>
     );
   }
 
-  if (!backendReady && !qrTokenActive) {
-    return <BackendUnavailable error={backendError} onRetry={checkBackend} />;
+  if (!backendReady && portal === 'admin') {
+    return <BackendUnavailable onRetry={retryConnection} />;
   }
 
   if (portal === 'public') {
@@ -250,6 +223,7 @@ function App() {
         verificationToken={verificationToken}
         backendChecking={checkingBackend}
         backendReady={backendReady}
+        onRetryConnection={retryConnection}
         isRegistrarLoggedIn={isLoggedIn}
         onClearToken={() => {
           setVerificationToken(null);
@@ -276,7 +250,7 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen flex-col md:flex-row bg-slate-50">
       <AdminSidebar
         activeModule={activeModule}
         onModuleChange={setActiveModule}
@@ -285,7 +259,12 @@ function App() {
         onLogout={handleLogout}
       />
 
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-col flex-1 overflow-hidden">
+        {adminDataError && <div className="p-4"><FeedbackMessage tone="error" title="Document list needs refreshing">
+          {adminDataError}{' '}
+          <button type="button" onClick={() => loadAdminData().catch(() => setAdminDataError('Records could not be loaded. Please try again.'))} className="font-semibold underline">Reload records</button>
+        </FeedbackMessage></div>}
+        <Suspense fallback={<p role="status" className="p-8 text-slate-600">Loading registrar tools…</p>}>
         {activeModule === 'issueNewTOR' && (
           <IssueNewTOR onRecordCreated={handleRecordCreated} />
         )}
@@ -297,6 +276,7 @@ function App() {
           />
         )}
         {activeModule === 'auditTrail' && <AuditTrailLogs logs={auditLogsList} />}
+        </Suspense>
       </div>
     </div>
   );

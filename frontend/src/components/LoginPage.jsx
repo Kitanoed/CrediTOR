@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Shield, Mail, Lock, AlertCircle } from 'lucide-react';
 
 const LoginPage = ({ onLogin, isLoading, error, onBackToPublic }) => {

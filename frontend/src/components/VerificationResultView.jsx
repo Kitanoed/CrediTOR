@@ -1,4 +1,4 @@
-import React from 'react';
+import { useEffect, useRef } from 'react';
 import {
   Shield,
   ArrowLeft,
@@ -115,10 +115,16 @@ const statusTheme = (status, verified, identityMatch = true) => {
 export const VerificationResultView = ({
   result,
   onBack,
+  onStartOver = onBack,
   onSwitchToRegistrar,
   isRegistrarLoggedIn = false,
   compact = false,
 }) => {
+  const headingRef = useRef(null);
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [result]);
+
   const failureShell = (bannerClass, title, message, tips) => (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <VerificationPortalHeader
@@ -132,7 +138,7 @@ export const VerificationResultView = ({
           className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to verification
+          Review details and try again
         </button>
         <div className={`rounded-2xl text-white border shadow-lg overflow-hidden mb-6 ${bannerClass}`}>
           <div className="px-5 py-6 flex items-start gap-4">
@@ -141,7 +147,7 @@ export const VerificationResultView = ({
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Overall status</p>
-              <h2 className="text-2xl font-bold mt-0.5">{title}</h2>
+              <h2 ref={headingRef} tabIndex={-1} className="text-2xl font-bold mt-0.5">{title}</h2>
               <p className="text-sm mt-2 leading-relaxed opacity-95">{message}</p>
             </div>
           </div>
@@ -150,6 +156,9 @@ export const VerificationResultView = ({
           <h3 className="text-sm font-bold text-slate-900 mb-3">What to do next</h3>
           <ul className="text-sm text-slate-600 space-y-2 list-disc pl-5">{tips}</ul>
         </div>
+        <button type="button" onClick={onStartOver} className="mt-6 text-sm font-semibold text-blue-600 hover:underline">
+          Verify another document
+        </button>
       </main>
     </div>
   );
@@ -157,12 +166,12 @@ export const VerificationResultView = ({
   if (!result.found) {
     return failureShell(
       'bg-red-600 border-red-700',
-      'Not verified',
-      result.error || 'This QR code or document could not be matched to an active record.',
+      'Record not found',
+      result.error || 'No registrar record was found for this QR code or DCN.',
       <>
         <li>Confirm the QR code on the paper TOR is intact and unaltered.</li>
-        <li>Double-check the DCN, full name, and student ID you entered.</li>
-        <li>Contact the Registrar&apos;s Office if the document appears suspicious.</li>
+        <li>Check the DCN against the paper, including every letter, number, and hyphen.</li>
+        <li>Try again or contact the Registrar&apos;s Office if the record still cannot be found.</li>
       </>
     );
   }
@@ -182,6 +191,21 @@ export const VerificationResultView = ({
         )}
         <li>Do not accept this TOR for employment, transfer, or any official purpose.</li>
         <li>Contact the Office of the Registrar if you need a current or replacement transcript.</li>
+      </>
+    );
+  }
+
+  if (result.overallStatus === 'Scan Unavailable' || result.overallStatus === 'Scan Failed') {
+    const unavailable = result.overallStatus === 'Scan Unavailable';
+    return failureShell(
+      'bg-amber-600 border-amber-700',
+      unavailable ? 'Photo check unavailable' : 'Photo could not be checked',
+      unavailable
+        ? 'The photo verification service is unavailable. No identity match was confirmed.'
+        : 'The photo check could not finish. This does not confirm an identity mismatch.',
+      <>
+        {!unavailable && <li>Retake the photo in good light with the name, student ID, and date issued in focus.</li>}
+        <li>Try again. If the problem continues, use the DCN for a manual comparison or contact the Registrar.</li>
       </>
     );
   }
@@ -249,7 +273,7 @@ export const VerificationResultView = ({
           className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 mb-5"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to verification
+          Review verification details
         </button>
 
         {/* Status banner */}
@@ -266,8 +290,10 @@ export const VerificationResultView = ({
               <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">
                 Overall status
               </p>
-              <h2 className="text-2xl sm:text-3xl font-bold mt-0.5">
-                {result.overallStatus || theme.overall}
+              <h2 ref={headingRef} tabIndex={-1} className="text-2xl sm:text-3xl font-bold mt-0.5">
+                {verified && record.status === 'Active'
+                  ? (result.manualVerification ? 'Active record found' : 'Photo details matched')
+                  : (result.overallStatus || theme.overall)}
               </h2>
               <p className="text-sm opacity-95 mt-2 leading-relaxed">{statusMessage}</p>
               {record.verificationToken && (
@@ -279,7 +305,7 @@ export const VerificationResultView = ({
           </div>
         </div>
 
-        {result.manualVerification && result.matchSummary && (
+        {result.manualVerification && (
           <div className="mb-5 p-4 bg-blue-50 border border-blue-200 rounded-xl">
             <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
               Manual verification
@@ -305,7 +331,7 @@ export const VerificationResultView = ({
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden mb-5">
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">
-              Identity-masked cross-match
+              Registrar details for comparison
             </p>
           </div>
           <div className="px-4">
@@ -339,6 +365,12 @@ export const VerificationResultView = ({
                 Verification policy
               </p>
               <p className="mt-2 text-sm text-amber-950/90 leading-relaxed">
+                {result.manualVerification
+                  ? 'This lookup confirms the record status. Compare the visible portions of the masked details with the paper TOR. '
+                  : 'The photo check compares name, student ID, and date issued. '}
+                It does not check every grade or certify that the entire paper is unaltered.
+              </p>
+              <p className="mt-2 text-sm text-amber-950/90 leading-relaxed">
                 If the masked name or details above do not align perfectly with the physical paper
                 document in your hands, this QR code may have been copied from a different
                 student&apos;s record.{' '}
@@ -364,7 +396,7 @@ export const VerificationResultView = ({
           <div className="mt-8 text-center pb-6">
             <button
               type="button"
-              onClick={onBack}
+              onClick={onStartOver}
               className="text-sm font-semibold text-blue-600 hover:text-blue-700"
             >
               Verify another document

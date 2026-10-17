@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Camera, Hash, ScanLine, Search, Upload } from 'lucide-react';
+import { FeedbackMessage } from './FeedbackMessage';
 
 export const PhotoVerificationForm = ({
   dcn,
@@ -16,22 +17,20 @@ export const PhotoVerificationForm = ({
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const submitLockRef = useRef(false);
-  const [previewUrl, setPreviewUrl] = useState(photoPreviewUrl || null);
-
-  useEffect(() => {
-    setPreviewUrl(photoPreviewUrl || null);
-  }, [photoPreviewUrl]);
+  const previewUrl = photoPreviewUrl;
+  const [fileError, setFileError] = useState('');
 
   const handleFile = (file) => {
+    if (isSubmitting) return;
     if (!file || !file.type.startsWith('image/')) {
-      alert('Please take or choose a photo (JPG, PNG, etc.)');
+      setFileError('Choose an image file, such as JPG or PNG, or use Take photo.');
       return;
     }
+    setFileError('');
     if (previewUrl && previewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(previewUrl);
     }
     const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
     onPhotoChange(file, url);
   };
 
@@ -49,7 +48,7 @@ export const PhotoVerificationForm = ({
     if (previewUrl && previewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(previewUrl);
     }
-    setPreviewUrl(null);
+    setFileError('');
     onPhotoChange(null, null);
     if (cameraInputRef.current) cameraInputRef.current.value = '';
     if (galleryInputRef.current) galleryInputRef.current.value = '';
@@ -61,18 +60,19 @@ export const PhotoVerificationForm = ({
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <p className="font-semibold flex items-center gap-2">
             <ScanLine className="w-4 h-4" />
-            QR code linked
+            Step 1 complete: QR link opened
           </p>
           <p className="mt-1 text-blue-800/90">
-            Take a clear photo that includes <strong>Full Name</strong>, <strong>Student ID</strong>, and the{' '}
-            <strong>Date Issued</strong> printed on the TOR (same date the registrar entered — not admission
-            date). Then tap <strong>Scan &amp; verify</strong>{' '}
-            (your photo is saved if the page reloads after the camera).
+            Step 2: Photograph the <strong>Full Name</strong>, <strong>Student ID</strong>, and{' '}
+            <strong>Date Issued</strong> together. Keep the text in focus and avoid glare.
+            Use the date issued, not the admission date.
+            Step 3: Check your photo, then tap <strong>Scan &amp; verify</strong>.
           </p>
         </div>
       )}
 
       <div className="p-4 sm:p-5 bg-white/90 backdrop-blur-sm rounded-2xl shadow-[0_12px_40px_rgba(15,23,42,0.1)] border border-slate-200 space-y-4">
+        {fileError && <FeedbackMessage tone="error">{fileError}</FeedbackMessage>}
         {showDcn && (
           <div>
             <label
@@ -101,6 +101,7 @@ export const PhotoVerificationForm = ({
 
           <input
             ref={cameraInputRef}
+            disabled={isSubmitting}
             type="file"
             accept="image/*"
             capture="environment"
@@ -113,6 +114,7 @@ export const PhotoVerificationForm = ({
           />
           <input
             ref={galleryInputRef}
+            disabled={isSubmitting}
             type="file"
             accept="image/*"
             className="hidden"
@@ -131,7 +133,7 @@ export const PhotoVerificationForm = ({
                 className="w-full max-h-56 object-contain rounded-xl border border-slate-200 bg-slate-50"
               />
               <p className="text-xs text-green-700 font-medium text-center">
-                Photo ready — tap Scan &amp; verify below
+                {isSubmitting ? 'Photo submitted — verification in progress' : 'Check that all three details are readable, then select Scan & verify.'}
               </p>
               <button
                 type="button"
@@ -169,7 +171,7 @@ export const PhotoVerificationForm = ({
         </div>
 
         {isSubmitting && scanPhase && (
-          <p className="text-xs text-slate-500 text-center">{scanPhase}</p>
+          <p role="status" className="text-sm text-blue-700 text-center">{scanPhase}</p>
         )}
 
         <button
@@ -181,7 +183,7 @@ export const PhotoVerificationForm = ({
           {isSubmitting ? (
             <>
               <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              {scanPhase || 'Verifying…'}
+              Verifying…
             </>
           ) : (
             <>
@@ -193,8 +195,8 @@ export const PhotoVerificationForm = ({
       </div>
 
       <p className="text-center text-xs text-slate-500 px-2">
-        Your photo is read on the server with OCR.space and matched to the registrar record. After taking a photo, tap Scan
-        &amp; verify — do not refresh the page.
+        The photo check compares the name, student ID, and date issued with the registrar record.
+        Keep this page open while verification is in progress.
       </p>
     </div>
   );

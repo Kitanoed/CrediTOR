@@ -1,5 +1,23 @@
 # React + Vite
 
+## Refactoring checks
+
+Run `npm run lint` and `npm run build` from this directory.
+
+Browser regression tests cover public QR/DCN verification, retry behavior, result
+explanations, registration, PDF retrieval errors, revocation, and audit pagination
+at desktop and mobile sizes. API responses are simulated; the tests do not access
+real registrar records or validate OCR accuracy.
+
+Install the test browser with `npx playwright install chromium`, then run
+`npm run test:e2e`. The test server uses port 4175 and does not modify `.env.local`.
+To use an installed Chrome browser on PowerShell instead:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = 'chrome'
+npm run test:e2e
+```
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

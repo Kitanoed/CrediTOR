@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
 
 const PAGE_SIZE = 10;
@@ -232,8 +232,6 @@ const DescriptionModal = ({ log, onClose }) => {
 };
 
 const TablePagination = ({ currentPage, totalPages, totalItems, onPageChange }) => {
-  if (totalPages <= 1) return null;
-
   const start = (currentPage - 1) * PAGE_SIZE + 1;
   const end = Math.min(currentPage * PAGE_SIZE, totalItems);
 
@@ -248,6 +246,8 @@ const TablePagination = ({ currentPage, totalPages, totalItems, onPageChange }) 
     }
     return pages;
   }, [currentPage, totalPages]);
+
+  if (totalPages <= 1) return null;
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-200 bg-slate-50">
@@ -313,6 +313,12 @@ export const AuditTrailLogs = ({ logs }) => {
   const [modalFilter, setModalFilter] = useState(null);
   const [selectedLog, setSelectedLog] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [previousLogCount, setPreviousLogCount] = useState(logs.length);
+
+  if (previousLogCount !== logs.length) {
+    setPreviousLogCount(logs.length);
+    setCurrentPage(1);
+  }
 
   const sortedLogs = useMemo(
     () => [...logs].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
@@ -326,16 +332,6 @@ export const AuditTrailLogs = ({ logs }) => {
     const start = (safePage - 1) * PAGE_SIZE;
     return sortedLogs.slice(start, start + PAGE_SIZE);
   }, [sortedLogs, safePage]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [logs.length]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   const counts = useMemo(
     () => ({
