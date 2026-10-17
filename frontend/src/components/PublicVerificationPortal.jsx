@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Search,
 
@@ -14,7 +14,7 @@ import {
   GraduationCap,
 } from 'lucide-react';
 import { verification } from '../api/client';
-import { verifyOnce, clearVerifyCache } from '../services/verifyCache';
+import { FeedbackMessage } from './FeedbackMessage';
 import { PhotoVerificationForm } from './PhotoVerificationForm';
 import {
   savePendingVerifyPhoto,
@@ -325,8 +325,6 @@ const mapVerificationResponse = (data) => {
   };
 };
 
-const buildVerifyCacheKey = (kind, id, fileName) => `${kind}:${id}:photo:${fileName || 'unknown'}`;
-
 export const PublicVerificationPortal = ({
   verificationToken,
   onClearToken,
@@ -335,6 +333,7 @@ export const PublicVerificationPortal = ({
   isRegistrarLoggedIn = false,
   backendChecking = false,
   backendReady = true,
+  onRetryConnection,
 }) => {
   const [dcnInput, setDcnInput] = useState('');
   const [photoFile, setPhotoFile] = useState(null);
@@ -342,9 +341,15 @@ export const PublicVerificationPortal = ({
   const [scanPhase, setScanPhase] = useState('');
   const [verificationResult, setVerificationResult] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [lastCacheKey, setLastCacheKey] = useState(null);
+  const [requestError, setRequestError] = useState('');
+  const [dcnError, setDcnError] = useState('');
+  const submitLockRef = useRef(false);
+  const dcnInputRef = useRef(null);
+  const photoVersionRef = useRef(0);
 
   const handlePhotoChange = (file, previewUrl) => {
+    photoVersionRef.current += 1;
+    setRequestError('');
     setPhotoFile(file);
     setPhotoPreviewUrl(previewUrl);
     if (file && verificationToken) {
@@ -358,8 +363,9 @@ export const PublicVerificationPortal = ({
     if (!verificationToken) return;
 
     let cancelled = false;
+    const photoVersion = photoVersionRef.current;
     loadPendingVerifyPhoto(verificationToken).then((restored) => {
-      if (cancelled || !restored) return;
+      if (cancelled || !restored || photoVersion !== photoVersionRef.current) return;
       setPhotoFile(restored.file);
       setPhotoPreviewUrl(restored.previewUrl);
     });
@@ -370,52 +376,57 @@ export const PublicVerificationPortal = ({
   }, [verificationToken]);
 
   const handleDcnLookup = async () => {
+    if (submitLockRef.current) return;
     const dcn = dcnInput.trim().toUpperCase();
     if (!dcn) {
-      alert('Please enter a Document Control Number (DCN)');
+      setDcnError('Enter the DCN printed on your TOR, for example DCN-12345.');
+      dcnInputRef.current?.focus();
       return;
     }
 
+    // Custom DCNs are supported: do not enforce the example as a strict format.
+    setDcnInput(dcn);
+    setDcnError('');
+    setRequestError('');
+    submitLockRef.current = true;
     setIsSearching(true);
-    const cacheKey = `dcn:${dcn}:lookup`;
-    setLastCacheKey(cacheKey);
 
     try {
-      const data = await verifyOnce(cacheKey, () => verification.byDCN(dcn));
+      const data = await verification.byDCN(dcn);
       setVerificationResult(mapVerificationResponse(data));
-    } catch (err) {
-      setVerificationResult({ found: false, error: err.message, identityMatch: false });
+    } catch {
+      setRequestError('We could not complete the lookup. Check your connection and select Verify Document to try again. No document status was confirmed.');
     } finally {
+      submitLockRef.current = false;
       setIsSearching(false);
     }
   };
 
   const runPhotoVerification = async () => {
-    if (!backendReady) {
-      alert('Still connecting to the server. Wait a moment and try again.');
-      return;
-    }
+    if (submitLockRef.current) return;
 
     if (!photoFile) {
-      alert('Please take a photo of the TOR showing name, student ID, and date issued.');
+      setRequestError('Take or choose a photo showing the name, student ID, and date issued before verifying.');
       return;
     }
 
+    submitLockRef.current = true;
+    setRequestError('');
     setIsSearching(true);
-    setScanPhase('Reading photo with OCR…');
+    setScanPhase('Reading photo and checking registrar details…');
+    const slowMessage = window.setTimeout(() => {
+      setScanPhase('Still checking your photo. Keep this page open; you do not need to submit again.');
+    }, 10000);
 
     try {
-      const cacheKey = buildVerifyCacheKey('token', verificationToken, photoFile.name);
-      setLastCacheKey(cacheKey);
-
-      const data = await verifyOnce(cacheKey, () =>
-        verification.byTokenWithPhoto(verificationToken, photoFile)
-      );
+      const data = await verification.byTokenWithPhoto(verificationToken, photoFile);
       setVerificationResult(mapVerificationResponse(data));
       clearPendingVerifyPhoto();
-    } catch (err) {
-      setVerificationResult({ found: false, error: err.message, identityMatch: false });
+    } catch {
+      setRequestError('The photo check could not be completed. Your photo is still selected. Check your connection and select Scan & verify to retry. No document status was confirmed.');
     } finally {
+      window.clearTimeout(slowMessage);
+      submitLockRef.current = false;
       setIsSearching(false);
       setScanPhase('');
     }
@@ -423,14 +434,16 @@ export const PublicVerificationPortal = ({
 
   const handleBackToSearch = () => {
     setVerificationResult(null);
+    setRequestError('');
+  };
+
+  const handleStartOver = () => {
+    handleBackToSearch();
+    setDcnError('');
     setDcnInput('');
     if (photoPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(photoPreviewUrl);
     setPhotoFile(null);
     setPhotoPreviewUrl(null);
-    if (lastCacheKey) {
-      clearVerifyCache(lastCacheKey);
-      setLastCacheKey(null);
-    }
     clearPendingVerifyPhoto();
     if (verificationToken) {
       onClearToken?.();
@@ -442,6 +455,7 @@ export const PublicVerificationPortal = ({
       <VerificationResultView
         result={verificationResult}
         onBack={handleBackToSearch}
+        onStartOver={handleStartOver}
         onSwitchToRegistrar={
           isRegistrarLoggedIn ? onGoToRegistrarPortal : onRegistrarLogin
         }
@@ -468,12 +482,23 @@ export const PublicVerificationPortal = ({
               Connecting to server… you can still take a photo while waiting.
             </p>
           )}
+          {!backendChecking && !backendReady && (
+            <FeedbackMessage title="Connection interrupted">
+              You can prepare your photo and try verification again.
+              <button type="button" onClick={onRetryConnection} className="ml-1 font-semibold underline">Retry connection</button>
+            </FeedbackMessage>
+          )}
+          <button type="button" onClick={handleStartOver} disabled={isSearching}
+            className="mb-4 text-sm font-semibold text-blue-600 hover:underline disabled:opacity-50">
+            Use a DCN instead
+          </button>
           <h2 className="text-2xl font-bold text-slate-900 text-center">Verify this TOR</h2>
           <p className="mt-2 text-sm text-slate-600 text-center">
             Photograph the name, student ID, and date issued on the paper document, then tap{' '}
             <strong>Scan &amp; verify</strong>.
           </p>
           <div className="mt-6">
+            {requestError && <div className="mb-4"><FeedbackMessage tone="error" title="Verification could not be completed">{requestError}</FeedbackMessage></div>}
             <PhotoVerificationForm
               dcn={dcnInput}
               onDcnChange={setDcnInput}
@@ -522,15 +547,21 @@ export const PublicVerificationPortal = ({
           </p>
 
           <div className="mt-8 w-full max-w-lg">
-            <label htmlFor="dcn-input" className="sr-only">
-              Document Control Number
+            <label htmlFor="dcn-input" className="mb-2 block text-sm font-semibold text-slate-700">
+              Document Control Number (DCN)
             </label>
             <div className="flex flex-col sm:flex-row gap-3 p-2 bg-white/90 backdrop-blur-sm rounded-2xl shadow-[0_12px_40px_rgba(15,23,42,0.1)] border border-slate-200">
               <input
                 id="dcn-input"
+                ref={dcnInputRef}
                 type="text"
                 value={dcnInput}
-                onChange={(e) => setDcnInput(e.target.value.toUpperCase())}
+                onChange={(e) => { setDcnInput(e.target.value.toUpperCase()); setDcnError(''); setRequestError(''); }}
+                disabled={isSearching}
+                aria-invalid={Boolean(dcnError)}
+                aria-describedby={dcnError ? 'dcn-help dcn-error' : 'dcn-help'}
+                autoCapitalize="characters"
+                spellCheck={false}
                 onKeyDown={(e) => e.key === 'Enter' && handleDcnLookup()}
                 placeholder="e.g., DCN-12345"
                 className="flex-1 min-w-0 px-5 py-3.5 sm:py-4 text-lg font-mono text-slate-900 placeholder:text-slate-400 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -554,12 +585,19 @@ export const PublicVerificationPortal = ({
                 )}
               </button>
             </div>
-            <p className="mt-3 text-center text-xs text-slate-500">
+            {dcnError && <div className="mt-3"><FeedbackMessage id="dcn-error" tone="error">{dcnError}</FeedbackMessage></div>}
+            {requestError && <div className="mt-3"><FeedbackMessage tone="error" title="Lookup could not be completed">{requestError}</FeedbackMessage></div>}
+            {isSearching && <p role="status" className="mt-3 text-center text-sm text-blue-700">Checking the registrar record. Please wait…</p>}
+            <p id="dcn-help" className="mt-3 text-center text-xs text-slate-500">
               DCN is printed on your official TOR — typically starts with{' '}
               <span className="font-mono font-semibold text-slate-700">DCN-</span>
             </p>
             <p className="mt-2 text-center text-xs text-slate-500">
-              Scan the QR code on the TOR for automatic photo verification instead.
+              To use QR verification, open your phone camera, keep the entire QR code in view,
+              and tap the link. Then photograph the TOR details and select Scan &amp; verify.
+            </p>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              Use good lighting and avoid glare. If the QR code will not scan, enter the DCN above.
             </p>
           </div>
 

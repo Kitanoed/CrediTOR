@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Printer } from 'lucide-react';
 import { printPdfFromUrl } from '../services/printPdf';
 

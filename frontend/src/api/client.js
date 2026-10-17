@@ -101,7 +101,10 @@ export const tor = {
 
 export const verification = {
   /** DCN only — returns masked details for manual comparison (no photo). */
-  byDCN: (dcn) => apiCall(`/verify/by-dcn/${encodeURIComponent(dcn)}`, { method: 'GET' }),
+  byDCN: (dcn) => apiCall(`/verify/by-dcn/${encodeURIComponent(dcn)}`, {
+    method: 'GET',
+    signal: AbortSignal.timeout(30000),
+  }),
 
   byTokenWithScan: (token, extractedText) =>
     apiCall(`/verify/by-token/${encodeURIComponent(token)}/scan`, {
@@ -117,6 +120,7 @@ export const verification = {
     return fetch(`${API_BASE}/verify/by-token/${encodeURIComponent(token)}/scan-photo`, {
       method: 'POST',
       body: formData,
+      signal: AbortSignal.timeout(120000),
     }).then(async (res) => {
       let data = null;
       try {
@@ -207,4 +211,12 @@ export const files = {
   delete: (dcn) => apiCall(`/files/${encodeURIComponent(dcn)}`, { method: 'DELETE' }),
 };
 
-export const health = () => apiCall('/health', { method: 'GET' });
+let pendingHealth = null;
+
+export const health = () => {
+  if (!pendingHealth) {
+    pendingHealth = apiCall('/health', { method: 'GET', signal: AbortSignal.timeout(15000) })
+      .finally(() => { pendingHealth = null; });
+  }
+  return pendingHealth;
+};

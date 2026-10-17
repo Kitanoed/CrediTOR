@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, Printer } from 'lucide-react';
 import { generateDCN } from '../services/utils';
 import { buildVerificationUrl, getPublicOrigin, isLocalOnlyOrigin } from '../services/verificationUrl';
@@ -6,6 +6,7 @@ import { stampTorPdf } from '../services/pdfStampService';
 import { printPdfFromUrl } from '../services/printPdf';
 import { tor, files } from '../api/client';
 import { SuccessModal } from './SuccessModal';
+import { FeedbackMessage } from './FeedbackMessage';
 
 const emptyForm = () => ({
   studentId: '',
@@ -23,15 +24,15 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewRecord, setPreviewRecord] = useState(null);
   const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
-  const [mobileVerifyBase, setMobileVerifyBase] = useState('');
+  const [mobileVerifyBase] = useState(() => {
+    const base = getPublicOrigin();
+    return isLocalOnlyOrigin(base) ? '' : base;
+  });
   const [successRecord, setSuccessRecord] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  const [submitPhase, setSubmitPhase] = useState('');
   const previewUrlRef = useRef(null);
   const submitLockRef = useRef(false);
-
-  useEffect(() => {
-    const base = getPublicOrigin();
-    setMobileVerifyBase(isLocalOnlyOrigin(base) ? '' : base);
-  }, []);
 
   const revokePreviewUrl = () => {
     if (previewUrlRef.current) {
@@ -48,10 +49,12 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
   };
 
   const setPdfFile = (file) => {
+    if (submitLockRef.current) return;
     if (!file || file.type !== 'application/pdf') {
-      alert('Please upload a PDF file');
+      setFeedback({ tone: 'error', title: 'PDF required', message: 'Choose the official TOR as a PDF file, then try again.' });
       return;
     }
+    setFeedback(null);
     setUploadedFile(file);
     setFormData((prev) => ({ ...prev, uploadedFileName: file.name }));
     revokePreviewUrl();
@@ -72,6 +75,7 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
   };
 
   const handleReset = () => {
+    setFeedback(null);
     setFormData(emptyForm());
     setUploadedFile(null);
     revokePreviewUrl();
@@ -108,8 +112,8 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
   };
 
   const handleRegisterAndGenerate = async () => {
-    if (!formData.studentId?.trim() || !formData.firstName?.trim() || !formData.lastName?.trim() || !formData.dcn?.trim() || !uploadedFile) {
-      alert('Please complete all required fields and upload the TOR PDF');
+    if (!formData.studentId?.trim() || !formData.firstName?.trim() || !formData.lastName?.trim() || !formData.dcn?.trim() || !formData.dateIssued || !uploadedFile) {
+      setFeedback({ tone: 'error', title: 'Complete the TOR details', message: 'Enter the student ID, first and last name, DCN, and date issued, then upload the TOR PDF.' });
       return;
     }
 
@@ -117,10 +121,15 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
       return;
     }
     submitLockRef.current = true;
+    setFeedback(null);
     setIsSubmitting(true);
+    setSubmitPhase('Registering the TOR record…');
+    let registeredRecord = null;
 
     try {
       const record = await resolveTorRecord();
+      registeredRecord = record;
+      setSubmitPhase('Adding the verification QR code and DCN to the PDF…');
 
       const verificationUrl = buildVerificationUrl(record.verificationToken);
       const stampedBlob = await stampTorPdf(uploadedFile, {
@@ -131,6 +140,7 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
       });
 
       const stampedFile = new File([stampedBlob], `TOR-${record.dcn}.pdf`, { type: 'application/pdf' });
+      setSubmitPhase('Saving the stamped PDF…');
       await files.upload(record.dcn, stampedFile);
 
       await onRecordCreated(record);
@@ -150,16 +160,16 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
         verificationUrl,
         uploadedFileName: stampedFile.name,
       });
+      setFeedback({ tone: 'success', title: 'TOR registered successfully', message: `${record.dcn} and its stamped PDF were saved. Use Print to review the PDF, or open Registered Documents.` });
     } catch (err) {
       const message = err.message || 'Failed to register document';
-      if (message.includes('QR codes cannot use localhost')) {
-        alert(`${message}\n\nRestart npm run dev, update .env.local with your Wi-Fi IP, then try again.`);
-      } else {
-        alert(message);
-      }
+      setFeedback({ tone: 'error', title: 'Registration could not be completed', message: registeredRecord
+        ? `Record ${registeredRecord.dcn} was created, but the full registration could not finish. Keep the same details and DCN when retrying. ${message}`
+        : message });
     } finally {
       submitLockRef.current = false;
       setIsSubmitting(false);
+      setSubmitPhase('');
     }
   };
 
@@ -172,7 +182,7 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
     try {
       await printPdfFromUrl(previewPdfUrl);
     } catch (err) {
-      alert(err.message || 'Could not print the TOR PDF.');
+      setFeedback({ tone: 'error', title: 'PDF could not be opened', message: err.message || 'Try opening the PDF again.' });
     }
   };
 
@@ -184,7 +194,7 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
         message="The transcript has been registered, stamped with QR code and DCN, and saved. You can register another TOR or open Registered Documents from the menu."
         dcn={successRecord?.dcn}
         studentName={successRecord?.fullName}
-        confirmLabel="OK"
+        confirmLabel="Review registered TOR"
         onConfirm={handleSuccessConfirm}
         onClose={handleSuccessConfirm}
       />
@@ -221,7 +231,9 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
           {/* Record Entry */}
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-slate-900">Record Entry</h2>
-            <p className="text-sm text-slate-500 mb-5">Enter the official document details.</p>
+            <p className="text-sm text-slate-500 mb-5">Enter the official details, generate or enter a DCN, and upload the TOR PDF. Then select Register &amp; Generate.</p>
+
+            <fieldset disabled={isSubmitting} className="min-w-0">
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -243,15 +255,15 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
                     name="dcn"
                     value={formData.dcn}
                     onChange={handleInputChange}
-                    placeholder="e.g., DCN-0001"
-                    className="flex-1 px-3 py-2.5 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                    placeholder="e.g., DCN-12345"
+                    className="min-w-0 flex-1 px-3 py-2.5 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                   />
                   <button
                     type="button"
                     onClick={handleGenerateDCN}
                     className="px-3 py-2 text-xs font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50 shrink-0"
                   >
-                    Auto
+                    Generate DCN
                   </button>
                 </div>
               </div>
@@ -349,16 +361,19 @@ export const IssueNewTOR = ({ onRecordCreated }) => {
                 disabled={isSubmitting}
                 className="flex-1 py-3 bg-slate-900 text-white rounded-lg font-semibold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
-                {isSubmitting ? 'Generating…' : 'Register & Generate'}
+                {isSubmitting ? 'Registering TOR…' : 'Register & Generate'}
               </button>
               <button
                 type="button"
                 onClick={handleReset}
                 className="px-6 py-3 border-2 border-blue-600 text-blue-700 rounded-lg font-semibold hover:bg-blue-50 transition"
               >
-                Reset
+                Clear form
               </button>
             </div>
+            </fieldset>
+            {submitPhase && <p role="status" className="mt-4 text-sm text-blue-700">{submitPhase}</p>}
+            {feedback && <div className="mt-4"><FeedbackMessage tone={feedback.tone} title={feedback.title}>{feedback.message}</FeedbackMessage></div>}
           </section>
 
           {/* Print Preview */}
